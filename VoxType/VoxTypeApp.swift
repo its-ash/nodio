@@ -53,10 +53,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "mic.circle.fill",
-                accessibilityDescription: "Nodio"
-            )
+            if let icon = loadMenuBarIcon() {
+                button.image = icon
+            } else {
+                button.image = NSImage(
+                    systemSymbolName: "mic.circle.fill",
+                    accessibilityDescription: "Nodio"
+                )
+            }
         }
 
         let menu = NSMenu()
@@ -104,6 +108,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleRecording() { startRecording() }
+
+    // MARK: - Icon
+
+    private func loadMenuBarIcon() -> NSImage? {
+        // Load mic.svg from bundle resources; NSImage supports SVG on macOS 14+
+        if let url = Bundle.main.url(forResource: "mic", withExtension: "svg"),
+           let image = NSImage(contentsOf: url) {
+            image.isTemplate = true
+            image.size = NSSize(width: 18, height: 18)
+            return image
+        }
+        return nil
+    }
 
     @objc private func openPermissions() {
         let workspace = NSWorkspace.shared
