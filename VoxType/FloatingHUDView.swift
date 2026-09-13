@@ -6,6 +6,7 @@ enum HUDState: Equatable {
     case recording
     case transcribing
     case done
+    case failed
 }
 
 // MARK: - FloatingHUDView
@@ -49,7 +50,7 @@ struct FloatingHUDView: View {
     private var frameWidth: CGFloat {
         switch state {
         case .recording: return 120
-        case .transcribing, .done: return 150
+        case .transcribing, .done, .failed: return 150
         }
     }
 
@@ -74,6 +75,10 @@ struct FloatingHUDView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 14))
                 .foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.orange)
         }
     }
 
@@ -89,6 +94,10 @@ struct FloatingHUDView: View {
             Text("Done")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
+        case .failed:
+            Text("Didn't catch that")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
         }
     }
 
@@ -99,6 +108,7 @@ struct FloatingHUDView: View {
         case .recording: return [.purple, .pink, .orange]
         case .transcribing: return [.blue, .cyan]
         case .done: return [.green, .teal]
+        case .failed: return [.orange, .red]
         }
     }
 }

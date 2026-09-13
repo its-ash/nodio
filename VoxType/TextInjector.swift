@@ -14,10 +14,13 @@ final class TextInjector {
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let profile = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) }
 
-        // Per-app profile: if we already know paste is what works for this
-        // app (e.g. VS Code, where AX reliably fails), skip straight to it
-        // instead of re-attempting AX every single time and eating the
-        // latency + log noise of a call we know will fail.
+        // Per-app profile: if we already know AX doesn't work for this app
+        // (e.g. VS Code), skip straight to paste instead of re-attempting AX
+        // every single time and eating the latency + log noise of a call we
+        // know will fail. This is purely a speed optimization — it does NOT
+        // suppress the clipboard-confirmation signal, since paste success
+        // can never actually be verified from outside the target app (see
+        // attemptPaste).
         if profile == .paste {
             debugLog("known profile for \(bundleID ?? "?") = paste, skipping AX")
             attemptPaste(text, bundleID: bundleID, completion: completion)
@@ -49,6 +52,13 @@ final class TextInjector {
         attemptPaste(text, bundleID: bundleID, completion: completion)
     }
 
+    /// CGEvent.post has no way to report whether the target app actually
+    /// consumed a synthetic paste — some apps' input security policies
+    /// silently drop synthetic key events (observed with WhatsApp, a native
+    /// non-Electron app). So this always reports completion(true): the text
+    /// is guaranteed on the clipboard, and that's the one thing we can
+    /// actually promise. The clipboard-confirmation sound/beep is the user's
+    /// signal to manually Cmd+V if the automatic paste didn't land.
     private func attemptPaste(
         _ text: String, bundleID: String?, completion: @escaping (Bool) -> Void
     ) {
@@ -68,14 +78,12 @@ final class TextInjector {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             let posted = self?.postPasteCommand() ?? false
             self?.debugLog("postPasteCommand returned \(posted)")
-            if posted {
-                if let bundleID { InjectionProfileStore.shared.record(.paste, for: bundleID) }
-                completion(false)
-            } else {
-                // Paste failed — text is already on clipboard, just confirm
-                if let bundleID { InjectionProfileStore.shared.record(.clipboard, for: bundleID) }
-                completion(true)
+            if posted, let bundleID {
+                InjectionProfileStore.shared.record(.paste, for: bundleID)
+            } else if let bundleID {
+                InjectionProfileStore.shared.record(.clipboard, for: bundleID)
             }
+            completion(true)
         }
     }
 
@@ -140,15 +148,22 @@ final class TextInjector {
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
         let role = roleRef as? String ?? ""
 
+        // AXStaticText is a read-only label by definition — it must never be
+        // treated as an injection target. Setting kAXSelectedTextAttribute
+        // on one can still return .success (a silent no-op) which previously
+        // made deliver() falsely believe injection worked and text was lost
+        // (observed with WhatsApp, whose message list briefly reports focus
+        // on static text elements). Containers (AXGroup, AXWebArea,
+        // AXOutline, AXBrowser) are likewise never themselves text-settable
+        // — only a genuine descendant text field is, and that field is what
+        // reports focus, not its container.
+        guard role != "AXStaticText" else { return false }
+
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
         let subrole = subroleRef as? String ?? ""
 
-        // Broad set of text-capable roles
-        let textRoles: Set<String> = [
-            "AXTextField", "AXTextArea", "AXComboBox",
-            "AXWebArea", "AXGroup", "AXStaticText", "AXOutline", "AXBrowser"
-        ]
+        let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox"]
         if textRoles.contains(role) || subrole == "AXTextArea" {
             return true
         }
@@ -160,29 +175,34 @@ final class TextInjector {
             return true
         }
 
-        // Last resort: check if it has a AXValue or AXSelectedText attribute —
-        // if it does, it's likely a text field we can write to
-        var valueRef: CFTypeRef?
-        let hasValue = AXUIElementCopyAttributeValue(
-            element, kAXValueAttribute as CFString, &valueRef
-        ) == .success
+        // Last resort: the attribute must be reported *settable*, not merely
+        // readable — a static label also has a readable AXValue (its
+        // displayed text) despite never being editable.
+        var selectedSettable: DarwinBoolean = false
+        let selectedCheck = AXUIElementIsAttributeSettable(
+            element, kAXSelectedTextAttribute as CFString, &selectedSettable
+        )
+        if selectedCheck == .success, selectedSettable.boolValue { return true }
 
-        var selectedTextRef: CFTypeRef?
-        let hasSelectedText = AXUIElementCopyAttributeValue(
-            element, kAXSelectedTextAttribute as CFString, &selectedTextRef
-        ) == .success
-
-        return hasValue || hasSelectedText
+        var valueSettable: DarwinBoolean = false
+        let valueCheck = AXUIElementIsAttributeSettable(
+            element, kAXValueAttribute as CFString, &valueSettable
+        )
+        return valueCheck == .success && valueSettable.boolValue
     }
 
     // MARK: - AX Injection
 
     private func inject(_ text: String, into element: AXUIElement) -> Bool {
-        // NOTE: Do NOT gate on AXUIElementIsAttributeSettable first — many apps
-        // (Chromium/Electron in particular) answer that query incorrectly
-        // (report false, or error) for AXSelectedText even though the set call
-        // itself works fine. Try the set directly and trust a .success result;
-        // only fall back when the call itself fails.
+        // isEditableText() now only lets genuinely-settable elements reach
+        // here (role whitelist or an explicit AXUIElementIsAttributeSettable
+        // check), so a .success set result is more trustworthy than it used
+        // to be — but WhatsApp's composer is AXTextArea with no readable
+        // kAXValueAttribute at all, so the old before/after AXValue
+        // comparison always fell into "can't verify, trust it" and silently
+        // accepted no-op writes. Verify against kAXValueAttribute when it's
+        // readable; when it isn't, read back kAXSelectedTextAttribute
+        // itself (what we just wrote) instead of blindly trusting .success.
         let beforeValue = readValue(element)
 
         let setResult = AXUIElementSetAttributeValue(
@@ -192,17 +212,13 @@ final class TextInjector {
         )
 
         if setResult == .success {
-            // Some apps accept the call but silently no-op. Where we can read
-            // AXValue, confirm it actually changed; where we can't read it
-            // (many Electron/web views don't expose a readable AXValue),
-            // trust the .success result rather than rejecting a working path.
             if let before = beforeValue {
                 let after = readValue(element)
                 if after == nil || after != before {
                     return true
                 }
                 // Value unchanged — the set silently no-op'd. Fall through.
-            } else {
+            } else if readSelectedText(element)?.contains(text) == true {
                 return true
             }
         }
@@ -211,6 +227,13 @@ final class TextInjector {
         // for elements that don't support AXSelectedText writes (e.g. some
         // AXTextArea/AXWebArea implementations).
         return injectByReplacingValue(text, into: element)
+    }
+
+    private func readSelectedText(_ element: AXUIElement) -> String? {
+        var ref: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &ref)
+        guard result == .success else { return nil }
+        return ref as? String
     }
 
     private func readValue(_ element: AXUIElement) -> String? {

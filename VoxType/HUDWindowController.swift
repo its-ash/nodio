@@ -79,7 +79,7 @@ final class HUDWindowController {
         let width: CGFloat
         switch current {
         case .recording: width = 120
-        case .transcribing, .done: width = 150
+        case .transcribing, .done, .failed: width = 150
         }
         let x = frame.midX - width / 2
         let y = frame.maxY - 120

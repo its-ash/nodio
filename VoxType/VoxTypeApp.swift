@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private enum FeedbackEvent {
-        case start, stop
+        case start, stop, failed
     }
 
     private func playFeedback(_ event: FeedbackEvent) {
@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch event {
         case .start: NSSound(named: "Tink")?.play()
         case .stop: NSSound(named: "Pop")?.play()
+        case .failed: NSSound(named: "Basso")?.play()
         }
     }
 
@@ -328,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             guard let url else {
                 self.debugLog("no recording url, aborting")
-                self.hudController.hide(after: 0.5)
+                self.showTranscriptionFailure()
                 return
             }
 
@@ -340,14 +341,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.debugLog("transcribe completion, result=\(result ?? "nil")")
                 DispatchQueue.main.async {
                     guard let result = result, !result.isEmpty else {
+                        // SFSpeechURLRecognitionRequest's single-shot batch
+                        // mode can return isFinal=true with an empty
+                        // transcription — no error — when a long pause
+                        // confuses its endpointing, rather than properly
+                        // segmenting the speech either side of the pause.
+                        // Previously this just silently hid the HUD with no
+                        // indication anything was said at all; now it's an
+                        // explicit, visible failure so the user knows to
+                        // just try again instead of wondering if it worked.
                         self.debugLog("empty/nil transcription result, aborting")
-                        self.hudController.hide(after: 0.5)
+                        self.showTranscriptionFailure()
                         return
                     }
                     self.finishTranscription(result)
                 }
             }
         }
+    }
+
+    private func showTranscriptionFailure() {
+        hudController.updateState(.failed)
+        hudController.hide(after: 1.2)
+        playFeedback(.failed)
     }
 
     private func finishTranscription(_ rawResult: String) {
