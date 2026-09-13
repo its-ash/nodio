@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Nodio</string>
+    <key>CFBundleDisplayName</key>
+    <string>Nodio</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.nodio.app</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>Nodio</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>VoxType needs microphone access to transcribe your voice to text.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>VoxType uses on-device speech recognition to convert your voice to text privately.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>VoxType needs Automation access to inject transcribed text into the focused field.</string>
+</dict>
+</plist>
