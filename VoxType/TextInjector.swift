@@ -11,11 +11,25 @@ final class TextInjector {
     func deliver(_ text: String, completion: @escaping (Bool) -> Void) {
         guard !text.isEmpty else { completion(false); return }
 
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let profile = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) }
+
+        // Per-app profile: if we already know paste is what works for this
+        // app (e.g. VS Code, where AX reliably fails), skip straight to it
+        // instead of re-attempting AX every single time and eating the
+        // latency + log noise of a call we know will fail.
+        if profile == .paste {
+            debugLog("known profile for \(bundleID ?? "?") = paste, skipping AX")
+            attemptPaste(text, bundleID: bundleID, completion: completion)
+            return
+        }
+
         // 1. Try AX injection on the focused element (native macOS text fields).
         if let focusedElement = focusedTextElement() {
             debugLog("focused text element found, role=\(roleDescription(focusedElement)), attempting AX injection")
             if inject(text, into: focusedElement) {
                 debugLog("AX injection succeeded")
+                if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
                 completion(false)
                 return
             }
@@ -32,25 +46,36 @@ final class TextInjector {
         //    returns kAXErrorNotImplemented there even for a genuinely
         //    focused, editable field. Requiring AX to confirm focus first
         //    meant we never even tried pasting into VS Code.
-        if NSWorkspace.shared.frontmostApplication != nil {
-            debugLog("frontmost app present, copying + pasting")
-            copyToClipboard(text)
-            // Small delay so clipboard is ready before we paste
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                let posted = self?.postPasteCommand() ?? false
-                self?.debugLog("postPasteCommand returned \(posted)")
-                if posted {
-                    completion(false)
-                } else {
-                    // Paste failed — text is already on clipboard, just confirm
-                    completion(true)
-                }
-            }
-        } else {
-            // 3. No frontmost app at all — copy to clipboard.
+        attemptPaste(text, bundleID: bundleID, completion: completion)
+    }
+
+    private func attemptPaste(
+        _ text: String, bundleID: String?, completion: @escaping (Bool) -> Void
+    ) {
+        guard NSWorkspace.shared.frontmostApplication != nil else {
+            // No frontmost app at all — copy to clipboard.
             debugLog("no frontmost app at all, copying to clipboard only")
             copyToClipboard(text)
             completion(true)
+            return
+        }
+
+        debugLog("frontmost app present, copying + pasting")
+        copyToClipboard(text)
+        // Delay so clipboard is ready AND the HUD panel has fully
+        // dismissed — the floating panel can steal the paste target
+        // if we fire Cmd+V too quickly after recording stops.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            let posted = self?.postPasteCommand() ?? false
+            self?.debugLog("postPasteCommand returned \(posted)")
+            if posted {
+                if let bundleID { InjectionProfileStore.shared.record(.paste, for: bundleID) }
+                completion(false)
+            } else {
+                // Paste failed — text is already on clipboard, just confirm
+                if let bundleID { InjectionProfileStore.shared.record(.clipboard, for: bundleID) }
+                completion(true)
+            }
         }
     }
 
@@ -235,11 +260,6 @@ final class TextInjector {
     // MARK: - Paste Synthesis
 
     private func postPasteCommand() -> Bool {
-        // .hidSystemState + .cghidEventTap synthesizes input at the hardware
-        // level, which is what Electron/Chromium apps (VS Code, Slack,
-        // browsers) require to accept a paste — .cgSessionEventTap injects
-        // above the HID layer and some apps' input security filtering drops
-        // events posted that way.
         let source = CGEventSource(stateID: .hidSystemState)
         guard let source else { return false }
 
@@ -250,14 +270,29 @@ final class TextInjector {
 
         guard let keyDownCmd, let keyDownV, let keyUpV, let keyUpCmd else { return false }
 
+        // Set flags correctly: Cmd is held during V press and V release,
+        // then released on Cmd up.
         keyDownCmd.flags = CGEventFlags.maskCommand
         keyDownV.flags = CGEventFlags.maskCommand
         keyUpV.flags = CGEventFlags.maskCommand
+        keyUpCmd.flags = []
 
+        // Post events with small delays between them — browsers filter
+        // synthetic key sequences that arrive in the same event loop tick.
         keyDownCmd.post(tap: .cghidEventTap)
+
+        usleep(15_000) // 15ms
+
         keyDownV.post(tap: .cghidEventTap)
+
+        usleep(15_000)
+
         keyUpV.post(tap: .cghidEventTap)
+
+        usleep(15_000)
+
         keyUpCmd.post(tap: .cghidEventTap)
+
         return true
     }
 

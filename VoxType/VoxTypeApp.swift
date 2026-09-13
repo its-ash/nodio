@@ -3,6 +3,7 @@ import AppKit
 import Speech
 import AVFoundation
 import Combine
+import ServiceManagement
 
 @main
 struct VoxTypeApp: App {
@@ -33,11 +34,97 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var isRecording = false
 
+    private static let localeDefaultsKey = "com.nodio.app.recognitionLocale"
+
+    /// English accent options for on-device recognition. "Indian English"
+    /// defaults on first launch since that's the primary user's accent —
+    /// SFSpeechRecognizer ships a distinct en-IN model that materially
+    /// improves accuracy over en-US for Indian English speakers.
+    private static let supportedLocales: [(title: String, identifier: String)] = [
+        ("Indian English", "en-IN"),
+        ("US English", "en-US"),
+        ("British English", "en-GB"),
+        ("Australian English", "en-AU"),
+    ]
+
+    private var currentLocaleIdentifier: String {
+        get { UserDefaults.standard.string(forKey: Self.localeDefaultsKey) ?? "en-IN" }
+        set { UserDefaults.standard.set(newValue, forKey: Self.localeDefaultsKey) }
+    }
+
+    // MARK: - Sound Feedback
+
+    private static let soundFeedbackDefaultsKey = "com.nodio.app.soundFeedback"
+
+    private var soundFeedbackEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: Self.soundFeedbackDefaultsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.soundFeedbackDefaultsKey) }
+    }
+
+    // MARK: - Auto-Formatting
+
+    private static let autoFormatDefaultsKey = "com.nodio.app.autoFormat"
+
+    private var autoFormatEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: Self.autoFormatDefaultsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.autoFormatDefaultsKey) }
+    }
+
+    private enum FeedbackEvent {
+        case start, stop
+    }
+
+    private func playFeedback(_ event: FeedbackEvent) {
+        guard soundFeedbackEnabled else { return }
+        switch event {
+        case .start: NSSound(named: "Tink")?.play()
+        case .stop: NSSound(named: "Pop")?.play()
+        }
+    }
+
+    // MARK: - Launch at Login
+
+    private var launchAtLoginEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            NSLog("AppDelegate: failed to \(enabled ? "register" : "unregister") launch-at-login — \(error)")
+        }
+    }
+
+    @objc private func toggleSoundFeedback(_ sender: NSMenuItem) {
+        soundFeedbackEnabled.toggle()
+        sender.state = soundFeedbackEnabled ? .on : .off
+    }
+
+    @objc private func toggleAutoFormat(_ sender: NSMenuItem) {
+        autoFormatEnabled.toggle()
+        sender.state = autoFormatEnabled ? .on : .off
+    }
+
+    @objc private func resetInjectionProfiles() {
+        InjectionProfileStore.shared.reset()
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        let newValue = !launchAtLoginEnabled
+        setLaunchAtLogin(newValue)
+        sender.state = launchAtLoginEnabled ? .on : .off
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
         audioRecorder = AudioRecorder()
-        speechRecognizer = SpeechRecognizer()
+        speechRecognizer = SpeechRecognizer(localeIdentifier: currentLocaleIdentifier)
         textInjector = TextInjector()
         hudController = HUDWindowController()
 
@@ -74,6 +161,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateCopyMenuItem(copyItem)
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Language", action: nil, keyEquivalent: "").submenu = buildLanguageMenu()
+
+        let soundItem = menu.addItem(withTitle: "Sound Feedback", action: #selector(toggleSoundFeedback(_:)), keyEquivalent: "")
+        soundItem.state = soundFeedbackEnabled ? .on : .off
+
+        let formatItem = menu.addItem(withTitle: "Auto-Format Text", action: #selector(toggleAutoFormat(_:)), keyEquivalent: "")
+        formatItem.state = autoFormatEnabled ? .on : .off
+
+        let loginItem = menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
+        loginItem.state = launchAtLoginEnabled ? .on : .off
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Reset App Injection Profiles", action: #selector(resetInjectionProfiles), keyEquivalent: "")
         menu.addItem(withTitle: "Check Permissions…", action: #selector(openPermissions), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Nodio", action: #selector(quitApp), keyEquivalent: "q")
@@ -87,6 +187,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var cancellables = Set<AnyCancellable>()
+
+    private func buildLanguageMenu() -> NSMenu {
+        let submenu = NSMenu()
+        for (title, identifier) in Self.supportedLocales {
+            let item = submenu.addItem(
+                withTitle: title,
+                action: #selector(selectLanguage(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = identifier
+            item.state = (identifier == currentLocaleIdentifier) ? .on : .off
+        }
+        return submenu
+    }
+
+    @objc private func selectLanguage(_ sender: NSMenuItem) {
+        guard let identifier = sender.representedObject as? String,
+              identifier != currentLocaleIdentifier else { return }
+        currentLocaleIdentifier = identifier
+        speechRecognizer = SpeechRecognizer(localeIdentifier: identifier)
+        sender.menu?.items.forEach { $0.state = ($0.representedObject as? String == identifier) ? .on : .off }
+    }
 
     private func updateCopyMenuItem(_ item: NSMenuItem) {
         let hasLast = transcriptionStore.lastTranscription != nil
@@ -185,6 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             self.hudController.show()
+            self.playFeedback(.start)
             self.audioRecorder.start { power in
                 DispatchQueue.main.async { self.hudController.updateAudioLevel(power) }
             }
@@ -195,6 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard isRecording else { return }
         isRecording = false
         debugLog("stopRecording called")
+        playFeedback(.stop)
 
         audioRecorder.stop { [weak self] url in
             guard let self else { return }
@@ -225,9 +350,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func finishTranscription(_ result: String) {
+    private func finishTranscription(_ rawResult: String) {
+        let result = autoFormatEnabled ? TranscriptFormatter.format(rawResult) : rawResult
         debugLog("finishTranscription: \(result)")
         transcriptionStore.lastTranscription = result
+
+        // Hide HUD immediately so it can't steal focus from the target app
+        hudController.hide(after: 0)
 
         textInjector.deliver(result) { copied in
             self.hudController.updateState(.done)

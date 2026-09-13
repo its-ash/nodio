@@ -7,8 +7,20 @@ import Foundation
 final class SpeechRecognizer {
     private let recognizer: SFSpeechRecognizer
 
-    init(locale: Locale = Locale(identifier: "en-US")) {
-        recognizer = SFSpeechRecognizer(locale: locale) ?? SFSpeechRecognizer()!
+    /// `nil` falls back to `Locale.current` (the system region), then en-US.
+    /// Pass a specific identifier (e.g. "en-IN") to force an accent-specific
+    /// on-device model regardless of system locale.
+    init(localeIdentifier: String? = nil) {
+        let requested = localeIdentifier.map(Locale.init(identifier:)) ?? Locale.current
+        if let match = SFSpeechRecognizer(locale: requested), match.supportsOnDeviceRecognition {
+            recognizer = match
+        } else if let system = SFSpeechRecognizer(locale: Locale.current), system.supportsOnDeviceRecognition {
+            NSLog("SpeechRecognizer: \(requested.identifier) has no on-device model, using system locale \(system.locale.identifier)")
+            recognizer = system
+        } else {
+            NSLog("SpeechRecognizer: no on-device model for requested/system locale, falling back to en-US")
+            recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) ?? SFSpeechRecognizer()!
+        }
         if recognizer.supportsOnDeviceRecognition {
             recognizer.defaultTaskHint = .dictation
         }

@@ -8,8 +8,8 @@ let package = Package(
         .executableTarget(
             name: "VoxType",
             path: "VoxType",
-            exclude: ["Info.plist", "README.md"],
-            resources: [.copy("Resources/AppIcon.svg")],
+            exclude: ["Info.plist", "README.md", "Nodio.entitlements"],
+            resources: [.copy("Resources/mic.svg"), .copy("AppIcon.icns")],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
                 .linkedFramework("SwiftUI"),
