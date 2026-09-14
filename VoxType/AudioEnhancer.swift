@@ -7,14 +7,17 @@ import Foundation
 /// Pipeline (all on-device, no dependencies):
 /// 1. **High-pass filter** — removes low-frequency rumble (HVAC, desk vibrations)
 ///    below 85 Hz with a 1st-order biquad.
-/// 2. **Windowed soft noise gate** — per-2-second-window local noise floor
-///    estimation with a soft-knee transition to avoid clicks.
-/// 3. **Spectral subtraction (approximated)** — a simple DC-bias removal pass
-///    that subtracts the estimated noise floor from every sample before
-///    normalization, reducing broadband hiss.
-/// 4. **Peak normalization** — scales to 0.95 FS with clamped gain.
-/// 5. **Gentle compressor** — evens out loud/soft speech so the recognizer
-///    gets a consistent level.
+/// 2. **Peak normalization** — scales to 0.95 FS with clamped gain.
+///
+/// A windowed noise gate + spectral subtraction + compressor stage used to
+/// run here too, but that DSP chain was the repeated root cause of dropped
+/// or truncated speech at the start of a recording — particularly right
+/// after the user pauses before speaking, where the first ~2s window's
+/// noise floor is estimated almost entirely from silence, and the
+/// compressor's envelope follower then needs time to catch up once real
+/// speech starts. Given how often that regressed actual transcription
+/// accuracy, this stays deliberately simple: keep the signal, just make
+/// sure it's loud enough for the recognizer.
 ///
 /// All DSP loops use vDSP (Accelerate) for SIMD-accelerated vector ops.
 final class AudioEnhancer {
@@ -53,14 +56,8 @@ final class AudioEnhancer {
             // 1. High-pass filter (85 Hz, 1st-order)
             applyHighPassFilter(data: data, count: frameLength, sampleRate: sampleRate)
 
-            // 2 + 3. Windowed soft noise gate + spectral subtraction
-            applyNoiseGate(data: data, count: frameLength, sampleRate: sampleRate)
-
-            // 4. Peak normalization
+            // 2. Peak normalization
             normalizePeak(data: data, count: frameLength)
-
-            // 5. Gentle compressor
-            applyCompressor(data: data, count: frameLength, sampleRate: sampleRate)
         }
 
         // Write enhanced audio
@@ -112,63 +109,7 @@ final class AudioEnhancer {
         }
     }
 
-    // MARK: - 2+3. Windowed Soft Noise Gate + Spectral Subtraction
-
-    /// Per-window local noise floor estimation with soft-knee gating.
-    /// Also subtracts the estimated noise bias from all samples to reduce
-    /// broadband hiss (simplified spectral subtraction in the time domain).
-    private static func applyNoiseGate(data: UnsafeMutablePointer<Float>,
-                                       count: Int, sampleRate: Float) {
-        let windowSeconds: Float = 2.0
-        let windowSize = max(1, Int(windowSeconds * sampleRate))
-
-        var windowStart = 0
-        while windowStart < count {
-            let windowEnd = min(windowStart + windowSize, count)
-            let windowLen = windowEnd - windowStart
-
-            // Estimate local noise floor (10th percentile of |samples|)
-            var absSamples = [Float](repeating: 0, count: windowLen)
-            vDSP_vabs(data + windowStart, 1, &absSamples, 1, vDSP_Length(windowLen))
-
-            // Partial sort to find 10th percentile — use vDSP min + manual bucket
-            // For small windows this is fast enough; vDSP doesn't have percentile.
-            let sorted = absSamples.sorted()
-            let floorIdx = max(0, sorted.count / 10 - 1)
-            let noiseFloor = sorted[floorIdx]
-
-            // Gate threshold: 3x above noise floor, minimum 0.001
-            let gateThreshold = max(noiseFloor * 3.0, 0.001)
-            let kneeStart = gateThreshold * 0.5
-
-            // Subtract noise bias (simplified spectral subtraction)
-            let bias = noiseFloor * 0.5
-
-            for i in windowStart..<windowEnd {
-                // Subtract bias
-                var sample = data[i]
-                let sign: Float = sample >= 0 ? 1 : -1
-                let mag = abs(sample)
-                let reduced = max(0, mag - bias)
-                sample = sign * reduced
-
-                // Soft-knee gate
-                let finalMag = abs(sample)
-                if finalMag < kneeStart {
-                    data[i] = 0
-                } else if finalMag < gateThreshold {
-                    let t = (finalMag - kneeStart) / (gateThreshold - kneeStart)
-                    data[i] = sample * t
-                } else {
-                    data[i] = sample
-                }
-            }
-
-            windowStart = windowEnd
-        }
-    }
-
-    // MARK: - 4. Peak Normalization
+    // MARK: - 2. Peak Normalization
 
     /// Scales the signal so the peak amplitude reaches 0.95 FS.
     /// Gain is clamped to [1.0, 20.0] to avoid over-boosting silence.
@@ -184,52 +125,5 @@ final class AudioEnhancer {
         gain = max(1.0, min(gain, 20.0))
 
         vDSP_vsmul(data, 1, &gain, data, 1, vDSP_Length(count))
-    }
-
-    // MARK: - 5. Gentle Compressor
-
-    /// Simple feed-forward compressor with soft ratio to even out speech levels.
-    /// Threshold: -24 dB, Ratio: 2:1, Attack: 10ms, Release: 100ms.
-    private static func applyCompressor(data: UnsafeMutablePointer<Float>,
-                                        count: Int, sampleRate: Float) {
-        let threshold: Float = 0.063  // -24 dB → 10^(-24/20)
-        let ratio: Float = 2.0
-        let attackSamples = max(1, Int(0.010 * sampleRate))   // 10ms
-        let releaseSamples = max(1, Int(0.100 * sampleRate))  // 100ms
-
-        let attackCoeff = 1.0 - exp(-1.0 / Float(attackSamples))
-        let releaseCoeff = 1.0 - exp(-1.0 / Float(releaseSamples))
-
-        var env: Float = 0
-        var gain: Float = 1.0
-
-        for i in 0..<count {
-            let mag = abs(data[i])
-
-            // Envelope follower
-            let coeff = mag > env ? attackCoeff : releaseCoeff
-            env = env + coeff * (mag - env)
-
-            // Compute gain reduction
-            if env > threshold {
-                let over = env / threshold
-                let compressed = pow(over, 1.0 / ratio)
-                let targetGain = compressed * threshold / env
-                gain = gain + 0.1 * (targetGain - gain) // smooth gain changes
-            } else {
-                gain = gain + 0.1 * (1.0 - gain)
-            }
-
-            data[i] = data[i] * gain
-        }
-
-        // Post-compression makeup gain (+6 dB, clamped)
-        var makeupGain: Float = 2.0
-        vDSP_vsmul(data, 1, &makeupGain, data, 1, vDSP_Length(count))
-
-        // Final hard clip at 0.99 to prevent any overshoot
-        var clipMax: Float = 0.99
-        var clipMin: Float = -0.99
-        vDSP_vclip(data, 1, &clipMin, &clipMax, data, 1, vDSP_Length(count))
     }
 }

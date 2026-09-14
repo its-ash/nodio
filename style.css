@@ -388,6 +388,25 @@ nav .container {
 
 .install-btn { margin-top: 1rem; padding: 0.7rem 1.5rem; font-size: 0.9rem; }
 
+.gatekeeper-case {
+  background: var(--bg-secondary); border: 2px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  padding: 1.1rem 1.25rem; margin-top: 0.9rem;
+}
+.gatekeeper-case h4 { font-size: 0.92rem; font-weight: 700; margin-bottom: 0.4rem; }
+.gatekeeper-case p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.6rem; }
+.gatekeeper-case p:last-child { margin-bottom: 0; }
+.gatekeeper-case strong { color: var(--text-primary); }
+
+.code-block {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.85rem;
+  background: var(--text-primary); color: #ECFEFF;
+  border: 2px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem; margin: 0.6rem 0; overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+.code-block code { background: none; border: none; padding: 0; color: inherit; }
+
 .permission-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
   margin: 1.25rem 0 1rem;

@@ -215,7 +215,17 @@
             <div class="install-step-num">3</div>
             <div class="install-step-content">
               <h3>Open Nodio from Applications</h3>
-              <p>Since Nodio isn't notarized through the App Store, macOS Gatekeeper will flag it the first time. Right‑click (or Control‑click) the app → <strong>Open</strong> → confirm <strong>Open</strong> in the dialog. You only need to do this once.</p>
+              <p>Since Nodio isn't notarized through the App Store, macOS Gatekeeper will flag it the first time. What you see depends on your macOS version:</p>
+              <div class="gatekeeper-case">
+                <h4>Dialog offers "Open"</h4>
+                <p>Right‑click (or Control‑click) the app → <strong>Open</strong> → confirm <strong>Open</strong> in the dialog. You only need to do this once.</p>
+              </div>
+              <div class="gatekeeper-case">
+                <h4>Dialog only offers "Move to Trash"</h4>
+                <p>Recent macOS versions (Sequoia and later) removed the right‑click bypass for unnotarized apps — the only button is <strong>Move to Trash</strong>. Don't click it. Instead, open <strong>Terminal</strong> and run:</p>
+                <pre class="code-block"><code>xattr -dr com.apple.quarantine /Applications/Nodio.app</code></pre>
+                <p>This clears the quarantine flag macOS attaches to files downloaded from the internet. Then open Nodio from Applications as normal — no more warning.</p>
+              </div>
             </div>
           </div>
 
