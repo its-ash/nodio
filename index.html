@@ -90,13 +90,6 @@
           </a>
           <a href="#how" class="btn btn-secondary">See how it works</a>
         </div>
-        <div class="wave-demo">
-          <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-          <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-          <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-          <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-          <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-        </div>
       </div>
       <div class="hero-visual pop-in">
         <div class="hero-wave-wrap">
@@ -119,35 +112,35 @@
         <div class="section-label">Features</div>
         <h2 class="section-title">Built for speed and privacy.</h2>
         <div class="feature-grid">
+          <article class="feature-card feature-card-wide pop-in">
+            <div class="feature-icon"><span class="material-symbols-rounded">mic</span></div>
+            <h3>On-device recognition</h3>
+            <p>Apple's SFSpeechRecognizer runs entirely on your Mac. Audio never leaves your device, and it works without an internet connection.</p>
+          </article>
           <article class="feature-card pop-in">
             <div class="feature-icon"><span class="material-symbols-rounded">keyboard</span></div>
             <h3>Global hotkey</h3>
-            <p>Press the Fn / Globe key on your Mac keyboard to start recording. Release to stop and transcribe. Works system-wide, no app switching.</p>
+            <p>Hold Fn anywhere on macOS to record, release to transcribe. No app switching.</p>
           </article>
           <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">mic</span></div>
-            <h3>On-device recognition</h3>
-            <p>Apple's SFSpeechRecognizer runs entirely on your Mac. Audio never leaves your device. Zero latency, zero cloud, zero privacy concerns.</p>
+            <div class="feature-icon"><span class="material-symbols-rounded">language</span></div>
+            <h3>Built for your accent</h3>
+            <p>Switch between Indian, US, British, and Australian English models from the menu bar — pick the one that actually understands you.</p>
           </article>
           <article class="feature-card pop-in">
             <div class="feature-icon"><span class="material-symbols-rounded">content_paste</span></div>
             <h3>Smart text delivery</h3>
-            <p>Nodio injects text directly into the focused input field using the Accessibility API. If no field is focused, it copies to your clipboard.</p>
+            <p>Nodio injects text directly into the focused input field. If that fails, it falls back to clipboard, so nothing you said is ever lost.</p>
           </article>
-          <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">graphic_eq</span></div>
-            <h3>Audio enhancement</h3>
-            <p>A noise gate suppresses background sound and peak normalization boosts your voice before transcription, improving accuracy in noisy environments.</p>
-          </article>
-          <article class="feature-card pop-in">
+          <article class="feature-card feature-card-wide pop-in">
             <div class="feature-icon"><span class="material-symbols-rounded">visibility</span></div>
             <h3>Floating HUD</h3>
             <p>A compact, always-on-top pill with live waveform bars shows you Nodio is listening. No windows, no distractions — just a visual pulse.</p>
           </article>
           <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">content_copy</span></div>
-            <h3>Copy last message</h3>
-            <p>Need to re-use a transcription? The menu bar keeps your last message one click away. Copy it instantly from the Nodio menu.</p>
+            <div class="feature-icon"><span class="material-symbols-rounded">power_settings_new</span></div>
+            <h3>Launch at login</h3>
+            <p>Turn it on once in the menu bar and Nodio is ready the moment you log in.</p>
           </article>
         </div>
       </div>
@@ -158,27 +151,21 @@
       <div class="container">
         <div class="section-label">How it works</div>
         <h2 class="section-title">Three steps. That's it.</h2>
-        <div class="steps">
-          <div class="step fade-up">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <h3>Hold Fn to record</h3>
-              <p>Press and hold the Fn / Globe key on your Mac. The floating pill appears with a live waveform — Nodio is listening.</p>
-            </div>
+        <div class="how-grid">
+          <div class="how-card fade-up">
+            <div class="how-card-num">1</div>
+            <h3>Hold Fn to record</h3>
+            <p>The floating pill appears with a live waveform — Nodio is listening.</p>
           </div>
-          <div class="step fade-up">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <h3>Release to transcribe</h3>
-              <p>Let go of Fn. Nodio applies a noise gate and normalization, then runs on-device speech recognition on the enhanced audio.</p>
-            </div>
+          <div class="how-card fade-up">
+            <div class="how-card-num">2</div>
+            <h3>Release to transcribe</h3>
+            <p>Nodio cleans up the audio, then runs on-device speech recognition — no internet required.</p>
           </div>
-          <div class="step fade-up">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <h3>Text lands where you are</h3>
-              <p>The transcription is injected at your cursor in the focused text field. No field? It copies to your clipboard with a confirmation sound.</p>
-            </div>
+          <div class="how-card fade-up">
+            <div class="how-card-num">3</div>
+            <h3>Text lands where you are</h3>
+            <p>Injected at your cursor. No field focused? It copies to your clipboard instead.</p>
           </div>
         </div>
       </div>

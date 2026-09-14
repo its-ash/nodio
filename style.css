@@ -271,7 +271,7 @@ nav .container {
 }
 @media (prefers-reduced-motion: reduce) {
   .wave-bar { animation: none; height: 20px; opacity: 0.7; }
-  .hero::after, .feature-card:hover, .step-num:hover { transform: none !important; }
+  .hero::after, .feature-card:hover, .how-card:hover { transform: none !important; }
 }
 
 /* 10. Features */
@@ -279,14 +279,11 @@ nav .container {
 
 .feature-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+  grid-auto-rows: 1fr;
   position: relative;
 }
 
-/* Dashed connectors between cards */
-.feature-grid::before {
-  content: ''; position: absolute; top: 50%; left: 8%; right: 8%; height: 0;
-  border-top: 2px dashed var(--border-default); z-index: 0;
-}
+.feature-card-wide { grid-column: span 2; }
 
 .feature-card {
   position: relative; z-index: 1;
@@ -332,30 +329,28 @@ nav .container {
 
 .how .container { position: relative; z-index: 1; }
 
-.steps { display: flex; flex-direction: column; max-width: 40rem; }
+.how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
 
-.step {
-  display: flex; gap: 1.5rem; padding: 2rem 0;
-  border-bottom: 2px solid var(--border-default);
-}
-.step:last-child { border-bottom: none; }
-
-.step-num {
-  flex-shrink: 0; width: 48px; height: 48px; border-radius: var(--radius-full);
+.how-card {
   background: var(--bg-primary); border: 2px solid var(--border-strong);
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-heading); font-weight: 800; font-size: 1.1rem; color: var(--primary);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--transition-normal) var(--ease-standard);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: 1.75rem;
+  transition: transform var(--transition-normal) var(--ease-standard), box-shadow var(--transition-normal) ease-out;
 }
-.step-num:hover { transform: rotate(-10deg) scale(1.1); }
+.how-card:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-md); }
 
-.step:nth-child(1) .step-num { background: var(--primary); color: #fff; }
-.step:nth-child(2) .step-num { background: var(--secondary); color: #fff; }
-.step:nth-child(3) .step-num { background: var(--accent); color: var(--border-strong); }
+.how-card-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  font-family: var(--font-heading); font-weight: 800; font-size: 1rem;
+  border: 2px solid var(--border-strong); margin-bottom: 1rem;
+}
+.how-card:nth-child(1) .how-card-num { background: var(--primary); color: #fff; }
+.how-card:nth-child(2) .how-card-num { background: var(--secondary); color: #fff; }
+.how-card:nth-child(3) .how-card-num { background: var(--accent); color: var(--border-strong); }
 
-.step-content h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.375rem; }
-.step-content p { color: var(--text-secondary); font-size: 0.95rem; }
+.how-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
+.how-card p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
 
 /* 11b. Install */
 .install { padding: 6rem 0; position: relative; }
@@ -492,10 +487,10 @@ footer .copyright a:hover { color: var(--text-primary); }
   .hero::before { width: 200px; height: 200px; left: -40px; top: 10%; }
   .hero-visual { width: 100%; order: -1; }
   .feature-grid { grid-template-columns: 1fr; }
-  .feature-grid::before { display: none; }
+  .feature-card-wide { grid-column: span 1; }
   .feature-icon { margin-top: -2.5rem; }
   .nav-links a:not(.nav-cta) { display: none; }
-  .step { flex-direction: column; gap: 0.75rem; }
+  .how-grid { grid-template-columns: 1fr; }
   .install-step { flex-direction: column; gap: 0.75rem; }
   .permission-grid { grid-template-columns: 1fr; }
   footer .container { flex-direction: column; text-align: center; }
