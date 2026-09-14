@@ -60,26 +60,38 @@ final class SpeechRecognizer {
             }
 
             let request = SFSpeechAudioBufferRecognitionRequest()
-            request.shouldReportPartialResults = false
+            // Must be true here: with partials off, a long pause mid-stream
+            // can make the recognizer finalize early on just the segment
+            // spoken before the pause (isFinal=true), and the guard-once
+            // completion then discards everything spoken after — only the
+            // last thing said survived, the start was silently thrown away.
+            // Track the latest result instead and only commit it once the
+            // task actually finishes (isFinal, or the append loop below
+            // calls endAudio and the task settles).
+            request.shouldReportPartialResults = true
             if self.recognizer.supportsOnDeviceRecognition {
                 request.requiresOnDeviceRecognition = true
             }
 
             var finished = false
+            var latestText: String?
             let finish: (String?) -> Void = { text in
                 guard !finished else { return }
                 finished = true
-                completion(text)
+                completion(text ?? latestText)
             }
 
             self.recognizer.recognitionTask(with: request) { result, error in
                 if let error = error {
                     NSLog("SpeechRecognizer: error — \(error)")
-                    finish(nil)
+                    finish(latestText)
                     return
                 }
-                guard let result = result, result.isFinal else { return }
-                finish(result.bestTranscription.formattedString)
+                guard let result = result else { return }
+                latestText = result.bestTranscription.formattedString
+                if result.isFinal {
+                    finish(latestText)
+                }
             }
 
             // Feed the whole file in as a sequence of buffers, then signal
