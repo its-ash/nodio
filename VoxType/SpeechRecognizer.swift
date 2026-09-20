@@ -26,91 +26,146 @@ final class SpeechRecognizer {
         }
     }
 
-    // MARK: - Public
+    // MARK: - Live Session
 
-    /// Transcribes a recorded file by *streaming* its buffers into a
-    /// SFSpeechAudioBufferRecognitionRequest rather than handing the whole
-    /// file to SFSpeechURLRecognitionRequest in one shot.
+    private var liveRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var liveTask: SFSpeechRecognitionTask?
+    /// Identifies the current live session so a previous session's task —
+    /// still finishing up asynchronously after endAudio() — can recognize
+    /// it's stale and drop its results instead of delivering them through
+    /// onUpdate into what is by then a *new* session's state. Without this,
+    /// starting a new session quickly after ending the last one (e.g. two
+    /// fast fn taps) let the old task's trailing partials/final keep
+    /// firing into the new session, corrupting its transcript.
+    private var sessionID = 0
+
+    /// Whether the current session is still meant to be recording — set
+    /// false only by `endLiveSession`. Distinct from having a *live task*:
+    /// a mid-session error ends the current task (Speech framework never
+    /// delivers further results on a task once its handler has seen an
+    /// error), but the user may still be holding the key, so as long as
+    /// this stays true, a fresh task is started transparently to keep
+    /// capturing the rest of what they say instead of silently going deaf
+    /// for the remainder of the hold.
+    private var isSessionActive = false
+    private var onUpdate: ((String) -> Void)?
+
+    /// Starts a live recognition session fed directly from the mic tap
+    /// (via `feed`), instead of transcribing a finished recording file.
     ///
-    /// The URL-based batch request does a single holistic pass and its
-    /// internal endpointing can misfire on a long pause mid-recording —
-    /// observed as words before/after the pause being dropped or merged,
-    /// with isFinal=true and an empty or truncated transcription and no
-    /// error at all. Buffer streaming is the API's live-dictation path, so
-    /// it segments speech around silence the way it's actually designed to,
-    /// the same as it would for a continuously-spoken live recording.
-    func transcribe(fileAt url: URL, completion: @escaping (String?) -> Void) {
+    /// On-device recognition's partial results are the *entire*
+    /// transcription-so-far, re-guessed from scratch each time — not a
+    /// stream of new fragments — and it rarely (if ever) finalizes a
+    /// mid-stream segment (`isFinal`) on its own; that only reliably fires
+    /// once, when `endAudio()` is called. So `onUpdate` is called with the
+    /// full current best-guess transcript on *every* result (partial or
+    /// final) — it's the caller's job to reconcile that against whatever
+    /// is already on screen (see `TextInjector.updateLiveStream`), which is
+    /// what makes text actually appear while the user is still talking
+    /// instead of only once at the end. Called on the main queue.
+    func startLiveSession(onUpdate: @escaping (String) -> Void) {
         guard recognizer.isAvailable else {
-            NSLog("SpeechRecognizer: not available")
-            completion(nil)
+            NSLog("SpeechRecognizer: not available for live session")
             return
         }
+        endLiveSession()
 
-        SFSpeechRecognizer.requestAuthorization { status in
-            guard status == .authorized else {
-                NSLog("SpeechRecognizer: authorization denied (\(status.rawValue))")
-                completion(nil)
+        isSessionActive = true
+        self.onUpdate = onUpdate
+        startTask()
+    }
+
+    /// A single underlying recognition task within the live session.
+    /// `SFSpeechRecognitionTask` never delivers another result once its
+    /// handler has been called with an error — on-device recognition can
+    /// throw a transient "No speech detected" early in a session before
+    /// real speech has accumulated, which used to just kill transcription
+    /// silently for the rest of the hold even though `feed` kept appending
+    /// buffers to the now-dead request. Restarting the task (same session,
+    /// same onUpdate, buffers routed to the new request from here on) is
+    /// what actually keeps the rest of the utterance from being lost.
+    private func startTask() {
+        sessionID += 1
+        let thisSessionID = sessionID
+        fedBufferCount = 0
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.taskHint = .dictation
+        if recognizer.supportsOnDeviceRecognition {
+            request.requiresOnDeviceRecognition = true
+        }
+        liveRequest = request
+
+        liveTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            if let error = error {
+                Self.debugLog("live session error — \(error)")
+                DispatchQueue.main.async {
+                    guard let self, self.sessionID == thisSessionID, self.isSessionActive else { return }
+                    Self.debugLog("restarting task after error, session still active")
+                    self.startTask()
+                }
                 return
             }
-
-            guard let audioFile = try? AVAudioFile(forReading: url) else {
-                NSLog("SpeechRecognizer: failed to open recording for streaming")
-                completion(nil)
-                return
+            guard let result = result else { return }
+            let text = result.bestTranscription.formattedString
+            Self.debugLog("recognitionTask result isFinal=\(result.isFinal) text=\(text)")
+            DispatchQueue.main.async {
+                guard let self, self.sessionID == thisSessionID else { return }
+                self.onUpdate?(text)
             }
+        }
+    }
 
-            let request = SFSpeechAudioBufferRecognitionRequest()
-            // Must be true here: with partials off, a long pause mid-stream
-            // can make the recognizer finalize early on just the segment
-            // spoken before the pause (isFinal=true), and the guard-once
-            // completion then discards everything spoken after — only the
-            // last thing said survived, the start was silently thrown away.
-            // Track the latest result instead and only commit it once the
-            // task actually finishes (isFinal, or the append loop below
-            // calls endAudio and the task settles).
-            request.shouldReportPartialResults = true
-            if self.recognizer.supportsOnDeviceRecognition {
-                request.requiresOnDeviceRecognition = true
-            }
+    /// Feeds one live-captured buffer into the running session. Safe to call
+    /// from the audio render thread — `SFSpeechAudioBufferRecognitionRequest`
+    /// is documented as safe to append to from any thread.
+    func feed(_ buffer: AVAudioPCMBuffer) {
+        liveRequest?.append(buffer)
+        fedBufferCount += 1
+        if fedBufferCount % 50 == 0 {
+            Self.debugLog("fed \(fedBufferCount) buffers so far")
+        }
+    }
 
-            var finished = false
-            var latestText: String?
-            let finish: (String?) -> Void = { text in
-                guard !finished else { return }
-                finished = true
-                completion(text ?? latestText)
-            }
+    private var fedBufferCount = 0
 
-            self.recognizer.recognitionTask(with: request) { result, error in
-                if let error = error {
-                    NSLog("SpeechRecognizer: error — \(error)")
-                    finish(latestText)
-                    return
-                }
-                guard let result = result else { return }
-                latestText = result.bestTranscription.formattedString
-                if result.isFinal {
-                    finish(latestText)
-                }
-            }
+    private static func debugLog(_ message: String) {
+        let line = "\(Date()): [Speech] \(message)\n"
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("voxtype_debug.log")
+        guard let data = line.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: path) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: path)
+        }
+    }
 
-            // Feed the whole file in as a sequence of buffers, then signal
-            // end-of-audio — this is what makes it a streaming request
-            // instead of a single-shot batch one.
-            let frameCount: AVAudioFrameCount = 4096
-            let format = audioFile.processingFormat
-            while true {
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { break }
-                do {
-                    try audioFile.read(into: buffer, frameCount: frameCount)
-                } catch {
-                    NSLog("SpeechRecognizer: buffer read error — \(error)")
-                    break
-                }
-                guard buffer.frameLength > 0 else { break }
-                request.append(buffer)
-            }
-            request.endAudio()
+    /// Ends the live session. `endAudio()` triggers one last result
+    /// (usually `isFinal`) asynchronously, which still arrives through the
+    /// same `onUpdate` callback passed to `startLiveSession` — so the
+    /// caller keeps reconciling exactly as it did for every partial before
+    /// this. `onSettled` fires after a short grace window once that last
+    /// result has had time to land, so the caller can wrap up (e.g. settle
+    /// the HUD) instead of guessing when the task is really done.
+    func endLiveSession(onSettled: (() -> Void)? = nil) {
+        isSessionActive = false
+
+        guard let request = liveRequest else {
+            onUpdate = nil
+            onSettled?()
+            return
+        }
+        request.endAudio()
+        liveRequest = nil
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.liveTask?.cancel()
+            self?.liveTask = nil
+            self?.onUpdate = nil
+            onSettled?()
         }
     }
 }

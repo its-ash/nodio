@@ -1,4 +1,3 @@
-import SwiftUI
 import AppKit
 import Speech
 import AVFoundation
@@ -6,13 +5,12 @@ import Combine
 import ServiceManagement
 
 @main
-struct VoxTypeApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
+enum VoxTypeApp {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
     }
 }
 
@@ -33,6 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let transcriptionStore = TranscriptionStore()
 
     private var isRecording = false
+    /// Whether anything has been injected yet during the current live
+    /// session, so a session that never recognized anything can still be
+    /// reported as a failure once it ends.
+    private var hasInjectedThisSession = false
 
     private static let localeDefaultsKey = "com.nodio.app.recognitionLocale"
 
@@ -133,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupHotkey()
 
         requestSpeechAuthorization()
+        requestMicrophonePermissionOnLaunch()
     }
 
     // MARK: - Menu Bar
@@ -278,6 +281,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Checks the current microphone permission state on launch. If the
+    /// permission is already granted, nothing happens. If it's undetermined
+    /// (never asked before), this triggers the system permission prompt.
+    /// If it was previously denied, the user is alerted with a button to
+    /// jump straight to System Settings → Privacy → Microphone.
+    private func requestMicrophonePermissionOnLaunch() {
+        if #available(macOS 14, *) {
+            let status = AVAudioApplication.shared.recordPermission
+            switch status {
+            case .granted:
+                debugLog("mic permission already granted on launch")
+            case .denied:
+                debugLog("mic permission previously denied, prompting user")
+                alertMicPermissionDenied()
+            case .undetermined:
+                debugLog("mic permission undetermined, requesting on launch")
+                AVAudioApplication.requestRecordPermission { [weak self] granted in
+                    guard let self else { return }
+                    self.debugLog("mic permission request result: \(granted)")
+                    if !granted {
+                        DispatchQueue.main.async {
+                            self.alertMicPermissionDenied()
+                        }
+                    }
+                }
+            @unknown default:
+                debugLog("mic permission unknown status, requesting")
+                AVAudioApplication.requestRecordPermission { _ in }
+            }
+        } else {
+            let status = AVCaptureDevice.authorizationStatus(for: .audio)
+            switch status {
+            case .authorized:
+                debugLog("mic permission already granted on launch")
+            case .denied, .restricted:
+                debugLog("mic permission previously denied, prompting user")
+                alertMicPermissionDenied()
+            case .notDetermined:
+                debugLog("mic permission not determined, requesting on launch")
+                AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                    guard let self else { return }
+                    self.debugLog("mic permission request result: \(granted)")
+                    if !granted {
+                        DispatchQueue.main.async {
+                            self.alertMicPermissionDenied()
+                        }
+                    }
+                }
+            @unknown default:
+                debugLog("mic permission unknown status, requesting")
+                AVCaptureDevice.requestAccess(for: .audio) { _ in }
+            }
+        }
+    }
+
+    private func alertMicPermissionDenied() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Nodio Needs Microphone Access"
+        alert.informativeText = "Nodio requires microphone permission to transcribe your voice to text. Please grant access in System Settings → Privacy → Microphone."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Dismiss")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            openPermissions()
+        }
+    }
+
     // MARK: - Hotkey
 
     private func setupHotkey() {
@@ -308,11 +379,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            self.hasInjectedThisSession = false
+            self.transcriptionStore.lastTranscription = nil
+            self.textInjector.beginLiveStream()
+
             self.hudController.show()
             self.playFeedback(.start)
-            self.audioRecorder.start { power in
-                DispatchQueue.main.async { self.hudController.updateAudioLevel(power) }
+
+            // Live session: SpeechRecognizer hands back its full current
+            // best-guess transcript on every partial result (on-device
+            // recognition re-guesses the whole thing each time, it doesn't
+            // emit incremental fragments), and updateLiveTranscript below
+            // reconciles that against what's already on screen — this is
+            // what makes text actually appear while the user is still
+            // talking, instead of only once on release.
+            self.speechRecognizer.startLiveSession { [weak self] fullText in
+                self?.updateLiveTranscript(fullText)
             }
+
+            self.audioRecorder.start(
+                powerHandler: { power in
+                    DispatchQueue.main.async { self.hudController.updateAudioLevel(power) }
+                },
+                bufferHandler: { [weak self] buffer, _ in
+                    self?.speechRecognizer.feed(buffer)
+                }
+            )
         }
     }
 
@@ -322,39 +414,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("stopRecording called")
         playFeedback(.stop)
 
-        audioRecorder.stop { [weak self] url in
+        audioRecorder.stop { [weak self] _ in
             guard let self else { return }
             self.hudController.updateState(.transcribing)
-            self.debugLog("audioRecorder.stop completion, url=\(url?.path ?? "nil")")
 
-            guard let url else {
-                self.debugLog("no recording url, aborting")
-                self.showTranscriptionFailure()
-                return
-            }
-
-            // Enhance audio before transcription: noise gate + normalization
-            let enhancedURL = AudioEnhancer.enhance(fileAt: url) ?? url
-            self.debugLog("enhanced url=\(enhancedURL.path)")
-
-            self.speechRecognizer.transcribe(fileAt: enhancedURL) { result in
-                self.debugLog("transcribe completion, result=\(result ?? "nil")")
-                DispatchQueue.main.async {
-                    guard let result = result, !result.isEmpty else {
-                        // SFSpeechURLRecognitionRequest's single-shot batch
-                        // mode can return isFinal=true with an empty
-                        // transcription — no error — when a long pause
-                        // confuses its endpointing, rather than properly
-                        // segmenting the speech either side of the pause.
-                        // Previously this just silently hid the HUD with no
-                        // indication anything was said at all; now it's an
-                        // explicit, visible failure so the user knows to
-                        // just try again instead of wondering if it worked.
-                        self.debugLog("empty/nil transcription result, aborting")
-                        self.showTranscriptionFailure()
-                        return
-                    }
-                    self.finishTranscription(result)
+            // endAudio()'s final result still arrives through the same
+            // startLiveSession callback above, so it's already reconciled
+            // by the time onSettled fires here — nothing left to inject.
+            self.speechRecognizer.endLiveSession { [weak self] in
+                guard let self else { return }
+                self.textInjector.endLiveStream()
+                if self.hasInjectedThisSession {
+                    self.hudController.updateState(.done)
+                    self.hudController.hide(after: 1.2)
+                } else {
+                    self.showTranscriptionFailure()
                 }
             }
         }
@@ -366,19 +440,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playFeedback(.failed)
     }
 
-    private func finishTranscription(_ rawResult: String) {
-        let result = autoFormatEnabled ? TranscriptFormatter.format(rawResult) : rawResult
-        debugLog("finishTranscription: \(result)")
-        transcriptionStore.lastTranscription = result
+    /// Formats the recognizer's latest full transcript-so-far and hands it
+    /// to the injector to reconcile against what's already on screen.
+    private func updateLiveTranscript(_ rawText: String) {
+        let text = autoFormatEnabled ? TranscriptFormatter.format(rawText) : rawText
+        debugLog("updateLiveTranscript: \(text)")
 
-        // Hide HUD immediately so it can't steal focus from the target app
-        hudController.hide(after: 0)
+        transcriptionStore.lastTranscription = text.isEmpty ? nil : text
+        hasInjectedThisSession = hasInjectedThisSession || !text.isEmpty
 
-        textInjector.deliver(result) { copied in
-            self.hudController.updateState(.done)
-            self.hudController.hide(after: 1.2)
-            if copied { NSSound.beep() }
-        }
+        textInjector.updateLiveStream(fullText: text)
     }
 
     private func debugLog(_ message: String) {

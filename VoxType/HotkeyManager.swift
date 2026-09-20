@@ -12,6 +12,27 @@ final class HotkeyManager {
     private var runLoopSource: CFRunLoopSource?
     private var fnDown = false
 
+    /// Guards against a spurious momentary release mid-hold: the fn/Globe
+    /// key's flagsChanged flag has been observed to blip off and back on
+    /// for a single event during a genuine physical hold (it's shared with
+    /// system features like the emoji picker/dictation/input-switching, so
+    /// its debounce at the OS level isn't as clean as a normal modifier
+    /// key's). Real releases are held back briefly; if fn goes back down
+    /// before the delay elapses, the pending onRelease is cancelled and the
+    /// recording continues as one uninterrupted session instead of being
+    /// cut into fragments.
+    private static let releaseDebounce: TimeInterval = 0.45
+    private var pendingRelease: DispatchWorkItem?
+
+    /// The fn key must be held for at least this long before recording
+    /// starts. A quick tap (below the threshold) is ignored entirely —
+    /// only a deliberate press-and-hold triggers `onPress`.
+    private static let holdThreshold: TimeInterval = 0.5
+    private var pendingPress: DispatchWorkItem?
+    /// True once the hold threshold has elapsed and `onPress` has fired,
+    /// so `onRelease` only fires for sessions that actually started.
+    private var pressFired = false
+
     init(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
         self.onPress = onPress
         self.onRelease = onRelease
@@ -112,14 +133,86 @@ final class HotkeyManager {
         let fnPressed = flags.contains(.maskSecondaryFn)
         if fnPressed && !fnDown {
             fnDown = true
-            HotkeyManager.debugLog("fn pressed -> onPress")
-            onPress()
+            pressFired = false
+            if pendingRelease != nil {
+                // A release was about to fire but fn came back down first —
+                // this was the spurious mid-hold blip, not a real release.
+                HotkeyManager.debugLog("fn re-pressed within debounce window, cancelling pending release")
+                pendingRelease?.cancel()
+                pendingRelease = nil
+            } else {
+                HotkeyManager.debugLog("fn pressed, waiting for \(Self.holdThreshold)s hold threshold")
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    guard self.fnDown else { return }
+                    self.pressFired = true
+                    HotkeyManager.debugLog("fn held past threshold -> onPress")
+                    self.onPress()
+                }
+                pendingPress = work
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + Self.holdThreshold, execute: work
+                )
+            }
         } else if !fnPressed && fnDown {
-            fnDown = false
-            HotkeyManager.debugLog("fn released -> onRelease")
-            onRelease()
+            pendingPress?.cancel()
+            pendingPress = nil
+            // Cancel any release already pending from an earlier blip in
+            // this same hold before scheduling a new one — otherwise a
+            // second/third blip stacks up an *additional* uncancelled timer
+            // instead of replacing the first, and whichever one was
+            // scheduled earliest still fires on schedule regardless of
+            // later re-presses, which is what let stray releases through
+            // even though the debounce logic looked like it was cancelling
+            // them correctly.
+            pendingRelease?.cancel()
+            if pressFired {
+                HotkeyManager.debugLog("fn flag cleared, debouncing before onRelease")
+                confirmReleaseAfterDebounce(confirmationsLeft: 2)
+            } else {
+                HotkeyManager.debugLog("fn released before hold threshold, ignoring tap")
+                fnDown = false
+                pendingRelease = nil
+            }
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    /// Confirms a release across two spaced checkpoints instead of trusting
+    /// a single flagsChanged event or a single delayed recheck. The fn/Globe
+    /// key has been observed to read momentarily clear — long enough to
+    /// beat a simple one-shot debounce — right as speech pauses, without a
+    /// distinct matching press event ever following it; polling the live
+    /// keyboard state (CGEventSource.flagsState, not just replaying the
+    /// event that triggered this) at two points spread across the debounce
+    /// window means a single transient dip doesn't survive to trigger
+    /// onRelease unless the key is *still* reading up on the second check
+    /// too. Recurses with a fresh DispatchWorkItem each step so a genuine
+    /// re-press in between (handled by the `fnPressed && !fnDown` branch
+    /// above, which cancels `pendingRelease`) still aborts the whole thing.
+    private func confirmReleaseAfterDebounce(confirmationsLeft: Int) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let stillUp = !CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+            guard stillUp else {
+                HotkeyManager.debugLog("fn reads down on recheck, aborting release")
+                self.pendingRelease = nil
+                return
+            }
+            if confirmationsLeft > 1 {
+                self.confirmReleaseAfterDebounce(confirmationsLeft: confirmationsLeft - 1)
+            } else {
+                self.pendingRelease = nil
+                self.fnDown = false
+                self.pressFired = false
+                HotkeyManager.debugLog("fn released -> onRelease")
+                self.onRelease()
+            }
+        }
+        pendingRelease = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.releaseDebounce / 2, execute: work
+        )
     }
 }

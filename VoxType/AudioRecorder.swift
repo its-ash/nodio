@@ -9,6 +9,7 @@ final class AudioRecorder {
     private var fileURL: URL?
     private var powerTimer: Timer?
     private var powerHandler: ((Float) -> Void)?
+    private var bufferHandler: ((AVAudioPCMBuffer, AVAudioFormat) -> Void)?
 
     // AVAudioPCMBuffer is reference-counted around a raw C buffer that
     // AVAudioEngine recycles between tap callbacks on its own realtime
@@ -25,9 +26,13 @@ final class AudioRecorder {
 
     // MARK: - Public
 
-    func start(powerHandler: @escaping (Float) -> Void) {
+    func start(
+        powerHandler: @escaping (Float) -> Void,
+        bufferHandler: ((AVAudioPCMBuffer, AVAudioFormat) -> Void)? = nil
+    ) {
         guard !isRecording else { return }
         self.powerHandler = powerHandler
+        self.bufferHandler = bufferHandler
 
         let inputFormat = engine.inputNode.outputFormat(forBus: 0)
 
@@ -53,6 +58,7 @@ final class AudioRecorder {
             guard let self, let file = self.file else { return }
             self.updateLevel(from: buffer)
             do { try file.write(from: buffer) } catch { NSLog("AudioRecorder write: \(error)") }
+            self.bufferHandler?(buffer, inputFormat)
         }
 
         do {
@@ -74,6 +80,7 @@ final class AudioRecorder {
         engine.stop()
         file = nil
         powerHandler = nil
+        bufferHandler = nil
         levelLock.lock()
         latestLevel = 0
         levelLock.unlock()

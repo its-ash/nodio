@@ -4,93 +4,115 @@ import ApplicationServices
 /// Delivers transcribed text to the focused text field via the Accessibility API.
 /// Falls back to the clipboard when no suitable text input element is found.
 final class TextInjector {
-    /// Delivers transcribed text to the focused text field via the Accessibility API.
-    /// Falls back to paste synthesis (Cmd+V) for non-native text fields (VS Code, browsers).
-    /// Falls back to clipboard when no text input is focused.
-    /// `completion(true)` = copied to clipboard; `completion(false)` = injected/pasted.
-    func deliver(_ text: String, completion: @escaping (Bool) -> Void) {
-        guard !text.isEmpty else { completion(false); return }
+    // MARK: - Live Streaming
+
+    /// Words already committed to screen for the running live session,
+    /// tracked by count rather than by exact text. On-device speech
+    /// recognition's partial results are the *whole* transcript-so-far,
+    /// re-guessed each time, and it commonly revises earlier words as more
+    /// audio arrives — e.g. guessing "for" then correcting to "four" once
+    /// it hears more context. Deleting and retyping on every such revision
+    /// (matching by exact text) is jarring and was flagged as unwanted:
+    /// once a word is on screen it should never be removed, even if the
+    /// recognizer later changes its mind about it. So reconciliation is
+    /// purely by *word count* — only the words beyond what's already
+    /// committed are ever injected, and a revision to an already-committed
+    /// word is simply ignored, not corrected. Only ever touched on
+    /// `injectionQueue` so reads/writes can't race with the main-thread
+    /// call that enqueues each update.
+    private var committedWordCount = 0
+
+    /// Text recognized while the target app needs paste-fallback delivery,
+    /// held back instead of pasted immediately. Posting a synthetic Cmd+V
+    /// key sequence on every single word during live streaming was found
+    /// to corrupt the OS's own tracked modifier-key state — it was making
+    /// the fn/Globe hotkey read as released mid-hold purely because of how
+    /// often paste fired, confirmed by the false releases disappearing
+    /// entirely once injection was disabled for a diagnostic run. AX
+    /// injection doesn't post key events at all, so it stays fully live;
+    /// only the paste-only path defers to a single paste at session end.
+    private var pendingPasteText = ""
+
+    /// All actual key-event posting (paste) and AX calls happen here, off
+    /// the main thread, so a burst of updates never blocks the HUD/UI.
+    /// Serial (not concurrent) so updates apply in the order they arrived.
+    private let injectionQueue = DispatchQueue(label: "com.nodio.app.textInjector")
+
+    func beginLiveStream() {
+        injectionQueue.async {
+            self.committedWordCount = 0
+            self.pendingPasteText = ""
+        }
+    }
+
+    /// Flushes any text that was held back for paste-only delivery, then
+    /// resets session state. Safe to call even if nothing was buffered.
+    func endLiveStream() {
+        injectionQueue.async {
+            if !self.pendingPasteText.isEmpty {
+                self.debugLog("live stream ending: flushing buffered paste text")
+                self.pasteNow(self.pendingPasteText)
+            }
+            self.committedWordCount = 0
+            self.pendingPasteText = ""
+        }
+    }
+
+    /// Reconciles what's on screen with `fullText` (the latest full
+    /// transcript-so-far from the recognizer): if it now has more words
+    /// than are already committed, injects only the excess new words —
+    /// appending only, never deleting or retyping anything already on
+    /// screen, even if the recognizer revised an earlier word. Called
+    /// repeatedly as more partial results arrive during recording; safe to
+    /// call from the main thread — the actual work is dispatched off it.
+    func updateLiveStream(fullText: String) {
+        injectionQueue.async {
+            let words = fullText.split(separator: " ", omittingEmptySubsequences: true)
+            guard words.count > self.committedWordCount else { return }
+
+            let newWords = words[self.committedWordCount...]
+            let suffix = (self.committedWordCount > 0 ? " " : "") + newWords.joined(separator: " ")
+            self.insertAtCursor(suffix)
+            self.committedWordCount = words.count
+        }
+    }
+
+    /// Inserts text at the current cursor position without touching
+    /// anything else already on screen — AX injection when available.
+    /// When the target app needs paste-fallback instead, the text is
+    /// buffered rather than pasted immediately (see `pendingPasteText`)
+    /// and only actually delivered once, when the session ends.
+    private func insertAtCursor(_ text: String) {
+        guard !text.isEmpty else { return }
 
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let profile = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) }
+        let knownPasteOnly = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) } == .paste
 
-        // Per-app profile: if we already know AX doesn't work for this app
-        // (e.g. VS Code), skip straight to paste instead of re-attempting AX
-        // every single time and eating the latency + log noise of a call we
-        // know will fail. This is purely a speed optimization — it does NOT
-        // suppress the clipboard-confirmation signal, since paste success
-        // can never actually be verified from outside the target app (see
-        // attemptPaste).
-        if profile == .paste {
-            debugLog("known profile for \(bundleID ?? "?") = paste, skipping AX")
-            attemptPaste(text, bundleID: bundleID, completion: completion)
+        if !knownPasteOnly, let focusedElement = focusedTextElement(), inject(text, into: focusedElement) {
+            debugLog("live stream: AX insert succeeded")
+            if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
             return
         }
 
-        // 1. Try AX injection on the focused element (native macOS text fields).
-        if let focusedElement = focusedTextElement() {
-            debugLog("focused text element found, role=\(roleDescription(focusedElement)), attempting AX injection")
-            if inject(text, into: focusedElement) {
-                debugLog("AX injection succeeded")
-                if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
-                completion(false)
-                return
-            }
-            debugLog("AX injection failed, falling back to paste")
-        } else {
-            debugLog("no focused editable text element found")
-        }
-
-        // 2. Try paste synthesis (Cmd+V) whenever there's a frontmost app at
-        //    all. We can't gate this on an AX focus check: Chromium/Electron
-        //    apps (VS Code, Slack, browsers) commonly don't expose their
-        //    internal accessibility tree until an assistive-technology
-        //    client activates it, so kAXFocusedUIElementAttribute reliably
-        //    returns kAXErrorNotImplemented there even for a genuinely
-        //    focused, editable field. Requiring AX to confirm focus first
-        //    meant we never even tried pasting into VS Code.
-        attemptPaste(text, bundleID: bundleID, completion: completion)
+        debugLog("live stream: buffering for paste at session end")
+        pendingPasteText += text
     }
 
-    /// CGEvent.post has no way to report whether the target app actually
-    /// consumed a synthetic paste — some apps' input security policies
-    /// silently drop synthetic key events (observed with WhatsApp, a native
-    /// non-Electron app). So this always reports completion(true): the text
-    /// is guaranteed on the clipboard, and that's the one thing we can
-    /// actually promise. The clipboard-confirmation sound/beep is the user's
-    /// signal to manually Cmd+V if the automatic paste didn't land.
-    private func attemptPaste(
-        _ text: String, bundleID: String?, completion: @escaping (Bool) -> Void
-    ) {
+    /// Actually performs the paste — copies to clipboard and synthesizes
+    /// Cmd+V once. Only ever called once per session, from `endLiveStream`,
+    /// specifically to avoid the repeated-synthetic-key-event problem that
+    /// motivated buffering in the first place.
+    private func pasteNow(_ text: String) {
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         guard NSWorkspace.shared.frontmostApplication != nil else {
-            // No frontmost app at all — copy to clipboard.
-            debugLog("no frontmost app at all, copying to clipboard only")
+            debugLog("pasteNow: no frontmost app, copying to clipboard only")
             copyToClipboard(text)
-            completion(true)
             return
         }
-
-        debugLog("frontmost app present, copying + pasting")
         copyToClipboard(text)
-        // Delay so clipboard is ready AND the HUD panel has fully
-        // dismissed — the floating panel can steal the paste target
-        // if we fire Cmd+V too quickly after recording stops.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            let posted = self?.postPasteCommand() ?? false
-            self?.debugLog("postPasteCommand returned \(posted)")
-            if posted, let bundleID {
-                InjectionProfileStore.shared.record(.paste, for: bundleID)
-            } else if let bundleID {
-                InjectionProfileStore.shared.record(.clipboard, for: bundleID)
-            }
-            completion(true)
+        if postPasteCommand(), let bundleID {
+            InjectionProfileStore.shared.record(.paste, for: bundleID)
         }
-    }
-
-    private func roleDescription(_ element: AXUIElement) -> String {
-        var roleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-        return (roleRef as? String) ?? "?"
     }
 
     /// NSLog is unreliable to observe from this unsigned/adhoc-signed debug
