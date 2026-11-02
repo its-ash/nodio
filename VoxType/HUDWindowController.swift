@@ -12,13 +12,19 @@ final class HUDWindowController {
     private var audioLevel: Float = 0 {
         didSet { updateView() }
     }
+    private var preview = ""
+    private var message: String?
     private var hideTimer: Timer?
 
     // MARK: - Public
 
     func show() {
+        hideTimer?.invalidate()
+        preview = ""
+        message = nil
         current = .recording
         audioLevel = 0
+        if let panel { position(panel) }
 
         if let panel = panel {
             panel.orderFrontRegardless()
@@ -57,7 +63,16 @@ final class HUDWindowController {
         audioLevel = level
     }
 
-    func updateState(_ state: HUDState) {
+    /// Live transcript tail shown next to the waveform while recording.
+    func updatePreview(_ text: String) {
+        let wasEmpty = preview.isEmpty
+        preview = text.replacingOccurrences(of: "\n", with: " ")
+        updateView()
+        if wasEmpty != preview.isEmpty, let panel { position(panel) }
+    }
+
+    func updateState(_ state: HUDState, message: String? = nil) {
+        self.message = message
         current = state
         // Reposition after state change since frame width differs per state
         DispatchQueue.main.async { [weak self] in
@@ -69,18 +84,13 @@ final class HUDWindowController {
     // MARK: - Private
 
     private func updateView() {
-        hostingView?.rootView = FloatingHUDView(state: current, audioLevel: audioLevel)
+        hostingView?.rootView = FloatingHUDView(state: current, audioLevel: audioLevel, preview: preview, message: message)
     }
 
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
         let frame = screen.visibleFrame
-        // Use the SwiftUI view's intrinsic size for positioning
-        let width: CGFloat
-        switch current {
-        case .recording: width = 120
-        case .transcribing, .done, .failed: width = 150
-        }
+        let width = FloatingHUDView.width(state: current, preview: preview, message: message)
         let x = frame.midX - width / 2
         let y = frame.maxY - 120
         panel.setFrame(NSRect(x: x, y: y, width: width, height: panel.frame.height), display: true)

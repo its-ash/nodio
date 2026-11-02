@@ -2,12 +2,27 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-/// Manages a global Quartz Event Tap that listens for the `fn` (Globe) modifier
-/// flag changes. Fires `onPress` when the key goes down and `onRelease` when it
-/// goes up — press-and-hold to talk behaviour.
+/// Manages a global Quartz Event Tap for the chosen modifier hotkey.
+/// Hold: `onPress` after the hold threshold, `onRelease` on key up.
+/// Hands-free: a double tap fires `onToggle`; while a session runs, one tap
+/// fires `onToggle` again to stop it.
 final class HotkeyManager {
     private let onPress: () -> Void
     private let onRelease: () -> Void
+    private let onToggle: () -> Void
+    private let isSessionActive: () -> Bool
+
+    /// Main thread only.
+    var hotkey: HotkeyChoice = .fn {
+        didSet { if hotkey != oldValue { resetKeyState() } }
+    }
+    var handsFreeEnabled = true
+
+    private static let doubleTapWindow: TimeInterval = 0.4
+    private var lastTapAt: Date?
+    /// Another key was pressed while the hotkey was down (e.g. ⌘C), so this
+    /// press is a shortcut, not a dictation request.
+    private var chorded = false
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var fnDown = false
@@ -33,9 +48,27 @@ final class HotkeyManager {
     /// so `onRelease` only fires for sessions that actually started.
     private var pressFired = false
 
-    init(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
+    init(
+        onPress: @escaping () -> Void,
+        onRelease: @escaping () -> Void,
+        onToggle: @escaping () -> Void,
+        isSessionActive: @escaping () -> Bool
+    ) {
         self.onPress = onPress
         self.onRelease = onRelease
+        self.onToggle = onToggle
+        self.isSessionActive = isSessionActive
+    }
+
+    private func resetKeyState() {
+        pendingPress?.cancel()
+        pendingRelease?.cancel()
+        pendingPress = nil
+        pendingRelease = nil
+        fnDown = false
+        pressFired = false
+        chorded = false
+        lastTapAt = nil
     }
 
     deinit { stop() }
@@ -75,7 +108,8 @@ final class HotkeyManager {
         guard eventTap == nil else { return }
 
         let mask: CGEventTapLocation = .cgSessionEventTap
-        let eventsOfInterest: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+        let eventsOfInterest: CGEventMask =
+            (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
 
         guard let tap = CGEvent.tapCreate(
             tap: mask,
@@ -125,15 +159,28 @@ final class HotkeyManager {
             return Unmanaged.passUnretained(event)
         }
 
+        if type == .keyDown {
+            if fnDown && !pressFired && !chorded {
+                HotkeyManager.debugLog("key pressed while hotkey held, treating as shortcut")
+                chorded = true
+                pendingPress?.cancel()
+                pendingPress = nil
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         guard type == .flagsChanged else { return Unmanaged.passUnretained(event) }
 
         let flags = event.flags
-
-        // kCGEventFlagSymbolic fn key — set when the fn/Globe key is held down.
-        let fnPressed = flags.contains(.maskSecondaryFn)
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        let hasFlag = flags.contains(hotkey.flag)
+        // Fn is the only owner of its flag. Right-side keys share their flag
+        // with the left key, so only their own key code may start a press.
+        let fnPressed = (hotkey == .fn || hotkey.keyCodes.contains(code)) ? hasFlag : (fnDown && hasFlag)
         if fnPressed && !fnDown {
             fnDown = true
             pressFired = false
+            chorded = false
             if pendingRelease != nil {
                 // A release was about to fire but fn came back down first —
                 // this was the spurious mid-hold blip, not a real release.
@@ -170,13 +217,32 @@ final class HotkeyManager {
                 HotkeyManager.debugLog("fn flag cleared, debouncing before onRelease")
                 confirmReleaseAfterDebounce(confirmationsLeft: 2)
             } else {
-                HotkeyManager.debugLog("fn released before hold threshold, ignoring tap")
                 fnDown = false
                 pendingRelease = nil
+                if !chorded { handleTap() }
+                chorded = false
             }
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    private func handleTap() {
+        guard handsFreeEnabled else {
+            HotkeyManager.debugLog("tap ignored, hands-free off")
+            return
+        }
+        if isSessionActive() {
+            HotkeyManager.debugLog("tap during session -> onToggle (stop)")
+            lastTapAt = nil
+            onToggle()
+        } else if let last = lastTapAt, Date().timeIntervalSince(last) < Self.doubleTapWindow {
+            HotkeyManager.debugLog("double tap -> onToggle (start)")
+            lastTapAt = nil
+            onToggle()
+        } else {
+            lastTapAt = Date()
+        }
     }
 
     /// Confirms a release across two spaced checkpoints instead of trusting
@@ -194,7 +260,7 @@ final class HotkeyManager {
     private func confirmReleaseAfterDebounce(confirmationsLeft: Int) {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            let stillUp = !CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+            let stillUp = !CGEventSource.flagsState(.combinedSessionState).contains(self.hotkey.flag)
             guard stillUp else {
                 HotkeyManager.debugLog("fn reads down on recheck, aborting release")
                 self.pendingRelease = nil

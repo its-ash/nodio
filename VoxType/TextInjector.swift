@@ -38,10 +38,67 @@ final class TextInjector {
     /// Serial (not concurrent) so updates apply in the order they arrived.
     private let injectionQueue = DispatchQueue(label: "com.nodio.app.textInjector")
 
+    /// Text from the last delivery, so "delete that" knows how much to erase.
+    private var lastInserted = ""
+
     func beginLiveStream() {
         injectionQueue.async {
             self.committedWordCount = 0
             self.pendingPasteText = ""
+        }
+    }
+
+    // MARK: - One-Shot Delivery
+
+    /// Inserts `text` once at the cursor: AX first, then one paste.
+    func insert(_ text: String, completion: (() -> Void)? = nil) {
+        injectionQueue.async {
+            defer { if let completion { DispatchQueue.main.async(execute: completion) } }
+            guard !text.isEmpty else { return }
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let knownPasteOnly = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) } == .paste
+            if !knownPasteOnly, let el = self.focusedTextElement(), self.inject(text, into: el) {
+                self.debugLog("insert: AX succeeded")
+                if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
+            } else {
+                self.debugLog("insert: paste fallback")
+                self.pasteNow(text)
+            }
+            self.lastInserted = text
+        }
+    }
+
+    /// Erases the last delivered text with backspaces.
+    func deleteLast(completion: ((Bool) -> Void)? = nil) {
+        injectionQueue.async {
+            let n = self.lastInserted.count
+            if n > 0 {
+                self.postKey(0x33, count: n)
+                self.lastInserted = ""
+            }
+            if let completion { DispatchQueue.main.async { completion(n > 0) } }
+        }
+    }
+
+    /// Sends ⌘Z to the front app.
+    func undo(completion: (() -> Void)? = nil) {
+        injectionQueue.async {
+            self.postKey(0x06, flags: .maskCommand)
+            self.lastInserted = ""
+            if let completion { DispatchQueue.main.async(execute: completion) }
+        }
+    }
+
+    private func postKey(_ key: CGKeyCode, flags: CGEventFlags = [], count: Int = 1) {
+        guard let src = CGEventSource(stateID: .hidSystemState) else { return }
+        for _ in 0..<min(count, 5000) {
+            guard let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) else { return }
+            down.flags = flags
+            up.flags = flags
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            usleep(2_000)
         }
     }
 
@@ -73,6 +130,7 @@ final class TextInjector {
             let newWords = words[self.committedWordCount...]
             let suffix = (self.committedWordCount > 0 ? " " : "") + newWords.joined(separator: " ")
             self.insertAtCursor(suffix)
+            self.lastInserted = self.committedWordCount == 0 ? suffix : self.lastInserted + suffix
             self.committedWordCount = words.count
         }
     }

@@ -1,24 +1,15 @@
 import AVFoundation
 import Foundation
 
-/// Captures microphone input via `AVAudioEngine`, writes to a temporary `.caf`
-/// file, and reports real-time power levels for the HUD waveform.
+/// Captures microphone input via `AVAudioEngine` from the chosen device and
+/// reports real-time power levels for the HUD waveform.
 final class AudioRecorder {
-    private let engine = AVAudioEngine()
-    private var file: AVAudioFile?
-    private var fileURL: URL?
+    private var engine: AVAudioEngine?
     private var powerTimer: Timer?
     private var powerHandler: ((Float) -> Void)?
-    private var bufferHandler: ((AVAudioPCMBuffer, AVAudioFormat) -> Void)?
 
-    // AVAudioPCMBuffer is reference-counted around a raw C buffer that
-    // AVAudioEngine recycles between tap callbacks on its own realtime
-    // thread. Sharing the buffer object itself with the main-thread power
-    // timer let it read freed/rewritten memory mid-iteration — a data race
-    // that surfaced as a SIGSEGV on longer recordings (more tap callbacks =
-    // higher chance of colliding with the timer read). Instead, compute the
-    // RMS level on the audio thread (where the buffer is guaranteed valid)
-    // and hand off only a plain Float, guarded by a lock.
+    // RMS is computed on the audio thread, where the buffer is valid, and
+    // only a Float crosses to the main-thread timer.
     private let levelLock = NSLock()
     private var latestLevel: Float = 0
 
@@ -26,108 +17,80 @@ final class AudioRecorder {
 
     // MARK: - Public
 
+    /// `deviceUID` empty means the system default input. Returns false if capture failed.
+    @discardableResult
     func start(
+        deviceUID: String,
         powerHandler: @escaping (Float) -> Void,
-        bufferHandler: ((AVAudioPCMBuffer, AVAudioFormat) -> Void)? = nil
-    ) {
-        guard !isRecording else { return }
+        bufferHandler: ((AVAudioPCMBuffer) -> Void)? = nil
+    ) -> Bool {
+        guard !isRecording else { return true }
         self.powerHandler = powerHandler
-        self.bufferHandler = bufferHandler
 
-        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
-
-        let tempDir = FileManager.default.temporaryDirectory
-        fileURL = tempDir.appendingPathComponent("voxtype_\(UUID().uuidString).caf")
-
-        guard let url = fileURL else { return }
-        let outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 44100,
-            channels: 1,
-            interleaved: false
-        )!
-
-        do {
-            file = try AVAudioFile(forWriting: url, settings: outputFormat.settings)
-        } catch {
-            NSLog("AudioRecorder: failed to create file — \(error)")
-            return
+        // A fresh engine per session so a changed input device always applies.
+        let e = AVAudioEngine()
+        if let dev = AudioDevices.device(uid: deviceUID), !AudioDevices.select(dev, on: e) {
+            NSLog("AudioRecorder: could not select \(dev.name), using default input")
+        }
+        let fmt = e.inputNode.outputFormat(forBus: 0)
+        guard fmt.sampleRate > 0, fmt.channelCount > 0 else {
+            NSLog("AudioRecorder: input has no channels")
+            return false
         }
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            guard let self, let file = self.file else { return }
-            self.updateLevel(from: buffer)
-            do { try file.write(from: buffer) } catch { NSLog("AudioRecorder write: \(error)") }
-            self.bufferHandler?(buffer, inputFormat)
+        e.inputNode.installTap(onBus: 0, bufferSize: 1024, format: fmt) { [weak self] buffer, _ in
+            let level = AudioDevices.level(buffer)
+            if let self {
+                self.levelLock.lock()
+                self.latestLevel = level
+                self.levelLock.unlock()
+            }
+            bufferHandler?(buffer)
         }
 
         do {
-            try engine.start()
+            try e.start()
+            engine = e
             isRecording = true
             startPowerMetering()
+            return true
         } catch {
             NSLog("AudioRecorder: engine start failed — \(error)")
-            engine.inputNode.removeTap(onBus: 0)
+            e.inputNode.removeTap(onBus: 0)
+            return false
         }
     }
 
-    func stop(completion: @escaping (URL?) -> Void) {
-        guard isRecording else { completion(nil); return }
+    func stop(completion: @escaping () -> Void) {
+        guard isRecording else { completion(); return }
         isRecording = false
         stopPowerMetering()
 
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        file = nil
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        engine = nil
         powerHandler = nil
-        bufferHandler = nil
         levelLock.lock()
         latestLevel = 0
         levelLock.unlock()
 
-        completion(fileURL)
-        fileURL = nil
+        completion()
     }
 
     // MARK: - Power Metering
 
     private func startPowerMetering() {
         powerTimer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in
-            self?.measurePower()
+            guard let self else { return }
+            self.levelLock.lock()
+            let level = self.latestLevel
+            self.levelLock.unlock()
+            self.powerHandler?(level)
         }
     }
 
     private func stopPowerMetering() {
         powerTimer?.invalidate()
         powerTimer = nil
-    }
-
-    private func measurePower() {
-        levelLock.lock()
-        let normalized = latestLevel
-        levelLock.unlock()
-        powerHandler?(normalized)
-    }
-
-    // MARK: - Level Calculation (runs on the audio render thread)
-
-    private func updateLevel(from buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData else { return }
-
-        let frameLength = Int(buffer.frameLength)
-        guard frameLength > 0 else { return }
-
-        var sum: Float = 0
-        let samples = channelData[0]
-        for i in 0..<frameLength {
-            sum += samples[i] * samples[i]
-        }
-        let rms = sqrt(sum / Float(frameLength))
-        let db = 20 * log10(rms + 1e-8) // avoid log(0)
-        let normalized = max(0, min(1, (db + 50) / 50)) // -50dB..0dB → 0..1
-
-        levelLock.lock()
-        latestLevel = normalized
-        levelLock.unlock()
     }
 }

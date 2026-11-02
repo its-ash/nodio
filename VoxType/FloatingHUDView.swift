@@ -14,6 +14,16 @@ enum HUDState: Equatable {
 struct FloatingHUDView: View {
     let state: HUDState
     let audioLevel: Float
+    var preview: String = ""
+    var message: String?
+
+    static func width(state: HUDState, preview: String, message: String?) -> CGFloat {
+        switch state {
+        case .recording: preview.isEmpty ? 120 : 360
+        case .transcribing, .done: 150
+        case .failed: message == nil ? 150 : 260
+        }
+    }
 
     @State private var animateGradient = false
 
@@ -48,10 +58,7 @@ struct FloatingHUDView: View {
     }
 
     private var frameWidth: CGFloat {
-        switch state {
-        case .recording: return 120
-        case .transcribing, .done, .failed: return 150
-        }
+        Self.width(state: state, preview: preview, message: message)
     }
 
     // MARK: - Subviews
@@ -60,11 +67,11 @@ struct FloatingHUDView: View {
         switch state {
         case .recording:
             HStack(spacing: 2) {
-                ForEach(0..<14, id: \.self) { i in
-                WaveBar(index: i, level: audioLevel)
+                ForEach(0..<(preview.isEmpty ? 14 : 8), id: \.self) { i in
+                    WaveBar(index: i, level: audioLevel)
                 }
             }
-            .frame(width: 90, height: 24)
+            .frame(width: preview.isEmpty ? 90 : 50, height: 24)
             .animation(.easeOut(duration: 0.08), value: audioLevel)
         case .transcribing:
             ProgressView()
@@ -85,7 +92,14 @@ struct FloatingHUDView: View {
     @ViewBuilder private var content: some View {
         switch state {
         case .recording:
-            EmptyView()
+            if !preview.isEmpty {
+                Text(preview)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         case .transcribing:
             Text("Working…")
                 .font(.system(size: 11, weight: .semibold))
@@ -95,7 +109,8 @@ struct FloatingHUDView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
         case .failed:
-            Text("Didn't catch that")
+            Text(message ?? "Didn't catch that")
+                .lineLimit(1)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
         }
