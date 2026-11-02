@@ -30,6 +30,7 @@ make run
 - `HistoryStore.swift` — History + stats JSON.
 - `UpdateChecker.swift` — GitHub Releases check.
 - `SettingsView.swift` — SwiftUI Settings window.
+- `OnboardingView.swift` — First-launch setup guide (mic, accessibility, model progress), `ReadyNotifier`.
 - `HUDWindowController.swift` — Borderless, non-activating, always-on-top NSPanel.
 - `FloatingHUDView.swift` — SwiftUI glowing capsule with live waveform bars.
 - `TextInjector.swift` — AX-focused-element injection, paste synthesis, clipboard fallback.

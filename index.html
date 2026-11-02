@@ -3,285 +3,323 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Nodio — a native macOS menu bar app that turns your voice into text. Hold the Fn key, speak, and your words appear in any text field. On-device speech recognition, zero cloud, complete privacy." />
-  <meta name="keywords" content="Nodio, macOS, voice to text, speech recognition, dictation, menu bar app, SFSpeechRecognizer, on-device, offline, accessibility, Fn key, voice typing, WhisperFlow alternative" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#fbfbfd" />
+  <meta name="description" content="Nodio is a free macOS menu bar app that turns Indian English speech into text in any app. Hold Fn and speak. Whisper runs on your Mac, so your voice never leaves it." />
+  <meta name="keywords" content="Nodio, macOS dictation, voice to text, Whisper, whisper.cpp, Indian English, Hinglish, speech to text Mac, offline dictation, menu bar app, Fn key" />
   <meta name="author" content="Ashvini Jangid" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://its-ash.github.io/Nodio/" />
-  <title>Nodio — Voice to Text for Mac | On-Device Speech Recognition</title>
+  <title>Nodio: Voice to Text for Mac, On Device</title>
   <link rel="icon" href="mic.svg" type="image/svg+xml" />
 
-  <!-- Open Graph -->
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Nodio — Voice to Text for Mac" />
-  <meta property="og:description" content="Press Fn, speak, and your voice becomes text. A native macOS menu bar app with on-device speech recognition. No cloud, no latency, no subscriptions." />
+  <meta property="og:title" content="Nodio: Talk. It types." />
+  <meta property="og:description" content="Hold Fn, speak Indian English, and your words land in any app. Whisper runs on your Mac. Free and open source." />
   <meta property="og:url" content="https://its-ash.github.io/Nodio/" />
   <meta property="og:image" content="https://its-ash.github.io/Nodio/mic.svg" />
   <meta property="og:site_name" content="Nodio" />
-  <meta property="og:locale" content="en_US" />
-
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Nodio — Voice to Text for Mac" />
-  <meta name="twitter:description" content="Press Fn, speak, and your voice becomes text. Native macOS menu bar app with on-device speech recognition." />
+  <meta property="og:locale" content="en_IN" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Nodio: Talk. It types." />
+  <meta name="twitter:description" content="On-device Whisper dictation for Mac, tuned for Indian English." />
   <meta name="twitter:image" content="https://its-ash.github.io/Nodio/mic.svg" />
 
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=auto_fix_high,content_copy,download,history,keyboard_voice,lock,memory,menu_book,settings_voice,short_text,style,touch_app,translate&display=block" />
 
-  <!-- Structured Data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Nodio",
-    "operatingSystem": "macOS 13.0+",
+    "operatingSystem": "macOS 13.3 or later",
     "applicationCategory": "UtilitiesApplication",
-    "description": "A native macOS menu bar app that turns your voice into text. Hold the Fn key, speak, and your words appear in any focused text field using on-device speech recognition.",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "author": {
-      "@type": "Person",
-      "name": "Ashvini Jangid",
-      "url": "https://itsash.in"
-    }
+    "description": "A macOS menu bar app that turns Indian English speech into text in any app, with Whisper running on the device.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Ashvini Jangid", "url": "https://itsash.in" }
   }
   </script>
 </head>
 <body>
+  <a class="skip" href="#main">Skip to content</a>
 
-  <nav>
-    <div class="container">
-      <a href="#" class="nav-brand">
-        <img src="mic.svg" alt="Nodio" />
+  <header class="nav">
+    <div class="nav-inner">
+      <a href="#top" class="brand" aria-label="Nodio home">
+        <img src="mic.svg" alt="" width="22" height="22" />
         <span>Nodio</span>
       </a>
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="#install">Install</a>
-        <a href="#privacy">Privacy</a>
-        <a href="https://github.com/its-ash/Nodio/releases/latest" class="nav-cta">Get Nodio</a>
-      </div>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#commands">Commands</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#privacy">Privacy</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </nav>
+      <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-sm btn-primary">Download</a>
     </div>
-  </nav>
+  </header>
 
-  <main>
+  <main id="main">
 
-    <!-- Hero -->
-    <section class="hero container">
-      <div class="hero-content fade-up">
-        <div class="hero-badge">
-          <span class="dot"></span>
-          Native macOS &middot; On-device speech recognition
-        </div>
-        <h1>Press <span class="gradient">Fn</span>, speak,<br>and your voice becomes text.</h1>
-        <p class="hero-sub">
-          Nodio lives in your menu bar. Hold the Fn key, talk, release — your words
-          land in whatever text field you're focused on. No cloud, no latency, no subscriptions.
-        </p>
-        <div class="hero-ctas">
-          <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-primary">
-            Download for Mac
-            <span class="btn-icon"><span class="material-symbols-rounded">arrow_forward</span></span>
-          </a>
-          <a href="#how" class="btn btn-secondary">See how it works</a>
-        </div>
+    <section class="hero" id="top">
+      <img class="hero-icon" src="mic.svg" alt="" width="96" height="96" fetchpriority="high" />
+      <p class="hero-kicker">Nodio for Mac</p>
+      <h1>Talk. It types.</h1>
+      <p class="hero-sub">Hold Fn, speak in Indian English, and your words land in any app. Whisper runs on your Mac, so your voice never leaves it.</p>
+      <div class="hero-ctas">
+        <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-primary">
+          <span class="material-symbols-rounded" aria-hidden="true">download</span>
+          Download for Mac
+        </a>
+        <a href="#how" class="link-more">How it works <span aria-hidden="true">›</span></a>
       </div>
-      <div class="hero-visual pop-in">
-        <div class="hero-wave-wrap">
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
-          <span class="hero-wave-bar"></span><span class="hero-wave-bar"></span><span class="hero-wave-bar"></span>
+      <p class="hero-note">Free and open source. macOS 13.3 or later. Apple silicon recommended.</p>
+    </section>
+
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <h2 id="features-title" class="section-title">Everything you need to stop typing.</h2>
+        <p class="section-lede">One key starts it. The text goes in where your cursor is, in Mail, Slack, VS Code, WhatsApp, or any other app.</p>
+
+        <div class="bento">
+          <article class="tile tile-hero reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">memory</span>
+            <h3>Whisper, on your Mac.</h3>
+            <p>Nodio runs whisper.cpp with Metal. Pick Small for speed, Medium for balance, or Large v3 Turbo for the best accuracy with Indian accents. The model downloads one time. After that, dictation works offline.</p>
+            <dl class="model-list">
+              <div><dt>Small</dt><dd>190 MB</dd></div>
+              <div><dt>Medium</dt><dd>539 MB</dd></div>
+              <div><dt>Large v3 Turbo</dt><dd>574 MB</dd></div>
+            </dl>
+          </article>
+
+          <article class="tile reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">touch_app</span>
+            <h3>Hold, or go hands-free.</h3>
+            <p>Hold the key while you talk. Or double-tap it, speak as long as you like, and tap once to stop.</p>
+          </article>
+
+          <article class="tile reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">translate</span>
+            <h3>Hinglish mode.</h3>
+            <p>Mix Hindi and English the way you speak. Nodio writes it in Latin letters.</p>
+          </article>
+
+          <article class="tile tile-wide reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">style</span>
+            <h3>Writes for the app you are in.</h3>
+            <p>Casual in Slack and WhatsApp. Formal in Mail and Outlook. Code-safe in Xcode, VS Code, and Terminal, with no extra full stops. Change the style for any app in Settings.</p>
+          </article>
+
+          <article class="tile reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">auto_fix_high</span>
+            <h3>AI cleanup.</h3>
+            <p>Optional. Apple's on-device model fixes grammar and turns spoken lists into bullets. Needs macOS 26 with Apple Intelligence.</p>
+          </article>
+
+          <article class="tile tile-wide reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">history</span>
+            <h3>History and stats.</h3>
+            <p>Search, copy, and export past dictations. See words per day and the time you saved. Everything stays on this Mac, and you can delete any of it.</p>
+          </article>
+
+          <article class="tile reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">menu_book</span>
+            <h3>Your words, spelled right.</h3>
+            <p>Add names, places, and tech terms to your vocabulary. Whisper gets them as hints.</p>
+          </article>
+
+          <article class="tile reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">short_text</span>
+            <h3>Snippets.</h3>
+            <p>Say "my email" or "my address". Nodio types the saved text.</p>
+          </article>
+
+          <article class="tile tile-wide reveal">
+            <span class="material-symbols-rounded tile-icon" aria-hidden="true">settings_voice</span>
+            <h3>Any microphone.</h3>
+            <p>Pick the input and test its level. Silero voice detection skips silence, so you get fewer stray words.</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- Features -->
-    <section class="features" id="features">
-      <div class="container">
-        <div class="section-label">Features</div>
-        <h2 class="section-title">Built for speed and privacy.</h2>
-        <div class="feature-grid">
-          <article class="feature-card feature-card-wide pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">mic</span></div>
-            <h3>On-device recognition</h3>
-            <p>Apple's SFSpeechRecognizer runs entirely on your Mac. Audio never leaves your device, and it works without an internet connection.</p>
-          </article>
-          <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">keyboard</span></div>
-            <h3>Global hotkey</h3>
-            <p>Hold Fn anywhere on macOS to record, release to transcribe. No app switching.</p>
-          </article>
-          <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">language</span></div>
-            <h3>Built for your accent</h3>
-            <p>Switch between Indian, US, British, and Australian English models from the menu bar — pick the one that actually understands you.</p>
-          </article>
-          <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">content_paste</span></div>
-            <h3>Smart text delivery</h3>
-            <p>Nodio injects text directly into the focused input field. If that fails, it falls back to clipboard, so nothing you said is ever lost.</p>
-          </article>
-          <article class="feature-card feature-card-wide pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">visibility</span></div>
-            <h3>Floating HUD</h3>
-            <p>A compact, always-on-top pill with live waveform bars shows you Nodio is listening. No windows, no distractions — just a visual pulse.</p>
-          </article>
-          <article class="feature-card pop-in">
-            <div class="feature-icon"><span class="material-symbols-rounded">power_settings_new</span></div>
-            <h3>Launch at login</h3>
-            <p>Turn it on once in the menu bar and Nodio is ready the moment you log in.</p>
-          </article>
+    <section class="section section-dark" id="privacy" aria-labelledby="privacy-title">
+      <div class="wrap">
+        <span class="material-symbols-rounded privacy-icon" aria-hidden="true">lock</span>
+        <h2 id="privacy-title" class="section-title">Your voice stays on your Mac.</h2>
+        <p class="section-lede">Nodio has no account, no server, and no analytics. Audio stays in memory while you speak and is gone when you stop.</p>
+        <ul class="facts">
+          <li><strong>0 bytes</strong><span>of audio sent off your Mac</span></li>
+          <li><strong>1 download</strong><span>of the model, checked with SHA-256, then offline</span></li>
+          <li><strong>Local history</strong><span>in Application Support, which you can delete at any time</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="commands" aria-labelledby="commands-title">
+      <div class="wrap split">
+        <div class="split-head">
+          <h2 id="commands-title" class="section-title">Say it. Get it.</h2>
+          <p class="section-lede">Speak punctuation and edits as you go. Say "delete that" or "undo" on its own to fix the last insert.</p>
+        </div>
+        <div class="table-card reveal">
+          <table>
+            <caption class="sr-only">Voice commands and what they type</caption>
+            <thead>
+              <tr><th scope="col">You say</th><th scope="col">You get</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>"new line"</td><td>A line break</td></tr>
+              <tr><td>"new paragraph"</td><td>A blank line</td></tr>
+              <tr><td>"full stop", "comma", "question mark"</td><td><kbd>.</kbd> <kbd>,</kbd> <kbd>?</kbd></td></tr>
+              <tr><td>"open bracket" ... "close bracket"</td><td><kbd>(</kbd> ... <kbd>)</kbd></td></tr>
+              <tr><td>"delete that"</td><td>Erases the last text Nodio typed</td></tr>
+              <tr><td>"undo"</td><td><kbd>⌘</kbd><kbd>Z</kbd> in the front app</td></tr>
+              <tr><td>"my email"</td><td>Your saved snippet</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
 
-    <!-- How it works -->
-    <section class="how" id="how">
-      <div class="container">
-        <div class="section-label">How it works</div>
-        <h2 class="section-title">Three steps. That's it.</h2>
-        <div class="how-grid">
-          <div class="how-card fade-up">
-            <div class="how-card-num">1</div>
-            <h3>Hold Fn to record</h3>
-            <p>The floating pill appears with a live waveform — Nodio is listening.</p>
-          </div>
-          <div class="how-card fade-up">
-            <div class="how-card-num">2</div>
-            <h3>Release to transcribe</h3>
-            <p>Nodio cleans up the audio, then runs on-device speech recognition — no internet required.</p>
-          </div>
-          <div class="how-card fade-up">
-            <div class="how-card-num">3</div>
-            <h3>Text lands where you are</h3>
-            <p>Injected at your cursor. No field focused? It copies to your clipboard instead.</p>
-          </div>
-        </div>
+    <section class="section section-tint" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <h2 id="how-title" class="section-title">How it works.</h2>
+        <ol class="steps">
+          <li class="reveal">
+            <h3>Hold Fn.</h3>
+            <p>A small pill appears at the top of the screen and shows your words as you speak.</p>
+          </li>
+          <li class="reveal">
+            <h3>Speak.</h3>
+            <p>Whisper decodes your audio on the Mac every 1.2 seconds while you talk.</p>
+          </li>
+          <li class="reveal">
+            <h3>Release.</h3>
+            <p>A last full pass runs, then commands, snippets, and the app style apply.</p>
+          </li>
+          <li class="reveal">
+            <h3>Done.</h3>
+            <p>The text goes in at your cursor. If there is no text field, it goes on your clipboard.</p>
+          </li>
+        </ol>
+        <p class="steps-note">Prefer another key? Use Right Option, Right Command, or Right Control. Key combos such as <kbd>⌘</kbd><kbd>C</kbd> never start a recording.</p>
       </div>
     </section>
 
-    <!-- Install -->
-    <section class="install" id="install">
-      <div class="container">
-        <div class="section-label">Install</div>
-        <h2 class="section-title">Up and running in under a minute.</h2>
+    <section class="section" id="install" aria-labelledby="install-title">
+      <div class="wrap narrow">
+        <h2 id="install-title" class="section-title">Set up in a few minutes.</h2>
 
-        <div class="install-steps">
-          <div class="install-step fade-up">
-            <div class="install-step-num">1</div>
-            <div class="install-step-content">
-              <h3>Download the DMG</h3>
-              <p>Grab the latest <code>Nodio.dmg</code> from the GitHub release. No App Store, no account.</p>
-              <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-primary install-btn">
-                Download for Mac
-                <span class="btn-icon"><span class="material-symbols-rounded">arrow_forward</span></span>
-              </a>
-            </div>
-          </div>
-
-          <div class="install-step fade-up">
-            <div class="install-step-num">2</div>
-            <div class="install-step-content">
-              <h3>Open the DMG and drag Nodio to Applications</h3>
-              <p>Double-click <code>Nodio.dmg</code>, then drag the Nodio icon into the Applications folder shown in the window.</p>
-            </div>
-          </div>
-
-          <div class="install-step fade-up">
-            <div class="install-step-num">3</div>
-            <div class="install-step-content">
-              <h3>Open Nodio from Applications</h3>
-              <p>Since Nodio isn't notarized through the App Store, macOS Gatekeeper will flag it the first time. What you see depends on your macOS version:</p>
-              <div class="gatekeeper-case">
-                <h4>Dialog offers "Open"</h4>
-                <p>Right‑click (or Control‑click) the app → <strong>Open</strong> → confirm <strong>Open</strong> in the dialog. You only need to do this once.</p>
-              </div>
-              <div class="gatekeeper-case">
-                <h4>Dialog only offers "Move to Trash"</h4>
-                <p>Recent macOS versions (Sequoia and later) removed the right‑click bypass for unnotarized apps — the only button is <strong>Move to Trash</strong>. Don't click it. Instead, open <strong>Terminal</strong> and run:</p>
-                <pre class="code-block"><code>xattr -dr com.apple.quarantine /Applications/Nodio.app</code></pre>
-                <p>This clears the quarantine flag macOS attaches to files downloaded from the internet. Then open Nodio from Applications as normal — no more warning.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="install-step fade-up">
-            <div class="install-step-num">4</div>
-            <div class="install-step-content">
-              <h3>Grant three permissions</h3>
-              <p>Nodio asks for these the first time you use each feature. All three are required — here's why:</p>
-              <div class="permission-grid">
-                <div class="permission-card">
-                  <span class="material-symbols-rounded permission-icon">mic</span>
-                  <h4>Microphone</h4>
-                  <p>Lets Nodio capture your voice while you hold Fn. Audio is processed and discarded — never stored or uploaded.</p>
+        <ol class="install">
+          <li>
+            <h3>Download and drag to Applications.</h3>
+            <p>Get <code>Nodio.dmg</code> from GitHub, open it, and drag Nodio into Applications.</p>
+            <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-primary btn-inline">
+              <span class="material-symbols-rounded" aria-hidden="true">download</span>
+              Download for Mac
+            </a>
+          </li>
+          <li>
+            <h3>Open it the first time.</h3>
+            <p>Nodio is not from the App Store, so macOS asks before it opens. What you see depends on your macOS version.</p>
+            <div class="disclosures">
+              <details name="gatekeeper" open>
+                <summary>The dialog has an Open button</summary>
+                <p>Control-click Nodio in Applications, choose <strong>Open</strong>, then click <strong>Open</strong> again. You do this one time.</p>
+              </details>
+              <details name="gatekeeper">
+                <summary>The dialog only has Move to Trash</summary>
+                <p>Do not click it. Open Terminal and run this command, then open Nodio again:</p>
+                <div class="code">
+                  <code id="xattr-cmd">xattr -dr com.apple.quarantine /Applications/Nodio.app</code>
+                  <button type="button" class="copy" data-copy="xattr-cmd" aria-label="Copy command">
+                    <span class="material-symbols-rounded" aria-hidden="true">content_copy</span>
+                  </button>
                 </div>
-                <div class="permission-card">
-                  <span class="material-symbols-rounded permission-icon">record_voice_over</span>
-                  <h4>Speech Recognition</h4>
-                  <p>Enables Apple's on-device <code>SFSpeechRecognizer</code> to turn your audio into text, entirely on your Mac.</p>
-                </div>
-                <div class="permission-card">
-                  <span class="material-symbols-rounded permission-icon">accessibility_new</span>
-                  <h4>Accessibility</h4>
-                  <p>Lets Nodio type the transcribed text into whatever field you're focused on, and lets the Fn key work as a global hotkey.</p>
-                </div>
-              </div>
-              <p class="permission-note">
-                Grant them anytime via <strong>System Settings → Privacy &amp; Security</strong>, or use
-                <strong>Check Permissions…</strong> in the Nodio menu bar icon to jump straight there.
-              </p>
+                <p class="copy-status" role="status" aria-live="polite"></p>
+              </details>
             </div>
-          </div>
+          </li>
+          <li>
+            <h3>Follow the setup guide.</h3>
+            <p>On first launch, a window walks you through three steps. It shows a check mark for each one when it is done.</p>
+            <ul class="checks">
+              <li><strong>Microphone.</strong> So Nodio can hear you.</li>
+              <li><strong>Accessibility.</strong> So Nodio can see the hotkey and type into apps.</li>
+              <li><strong>Speech model.</strong> Downloads by itself and shows progress. You can close the window, and Nodio tells you when it is ready.</li>
+            </ul>
+            <p class="muted">While the model downloads, the menu bar icon shows a download arrow. Open the guide again at any time from the menu: <strong>Setup Guide</strong>.</p>
+          </li>
+          <li>
+            <h3>Hold Fn and talk.</h3>
+            <p>Click in any text field and try it. Open <strong>Settings</strong> from the menu bar to pick a model, a hotkey, or Hinglish mode.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
 
-          <div class="install-step fade-up">
-            <div class="install-step-num">5</div>
-            <div class="install-step-content">
-              <h3>Hold Fn and start talking</h3>
-              <p>That's it — Nodio lives quietly in your menu bar from here on. Optionally enable <strong>Launch at Login</strong> from the Nodio menu so it's always ready.</p>
-            </div>
-          </div>
+    <section class="section section-tint" id="faq" aria-labelledby="faq-title">
+      <div class="wrap narrow">
+        <h2 id="faq-title" class="section-title">Questions.</h2>
+        <div class="disclosures faq">
+          <details name="faq">
+            <summary>Does Nodio need the internet?</summary>
+            <p>Only to download the model one time and to check GitHub for updates. Dictation itself works offline.</p>
+          </details>
+          <details name="faq">
+            <summary>Why only Indian English?</summary>
+            <p>Nodio is tuned for one accent so it can do it well. The prompt, the default model, and Hinglish mode all target Indian English speakers. Other English accents still work, with less tuning.</p>
+          </details>
+          <details name="faq">
+            <summary>Which Mac do I need?</summary>
+            <p>macOS 13.3 or later. Any Apple silicon Mac runs Large v3 Turbo well. On Intel Macs, pick the Small model in Settings.</p>
+          </details>
+          <details name="faq">
+            <summary>Where are my dictations stored?</summary>
+            <p>The last 1000 are in <code>~/Library/Application Support/Nodio</code> on your Mac. Delete one, or all of them, from the History tab.</p>
+          </details>
+          <details name="faq">
+            <summary>Can I see the words before they go in?</summary>
+            <p>Yes. The pill shows them while you speak, and the text goes in when you release. Turn on Live Typing if you want words typed as you talk.</p>
+          </details>
+          <details name="faq">
+            <summary>Is it free?</summary>
+            <p>Yes. Nodio is MIT licensed, and the source is on GitHub.</p>
+          </details>
         </div>
       </div>
     </section>
 
-    <!-- Privacy -->
-    <section class="privacy" id="privacy">
-      <div class="container">
-        <div class="privacy-card fade-up">
-          <span class="material-symbols-rounded privacy-icon">shield</span>
-          <h2>Your voice stays on your Mac.</h2>
-          <p>Nodio uses Apple's native on-device speech recognition. Audio is processed locally, enhanced locally, and discarded after transcription. No servers, no telemetry, no accounts.</p>
-        </div>
-      </div>
+    <section class="cta">
+      <img src="mic.svg" alt="" width="64" height="64" loading="lazy" />
+      <h2>Give your keyboard a break.</h2>
+      <a href="https://github.com/its-ash/Nodio/releases/latest" class="btn btn-primary">
+        <span class="material-symbols-rounded" aria-hidden="true">download</span>
+        Download for Mac
+      </a>
     </section>
 
   </main>
 
-  <footer>
-    <div class="container">
-      <div class="brand">
-        <img src="mic.svg" alt="Nodio" />
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <a href="#top" class="brand">
+        <img src="mic.svg" alt="" width="18" height="18" />
         <span>Nodio</span>
-      </div>
-      <div class="links">
-        <a href="https://github.com/its-ash/Nodio">GitHub</a>
-        <a href="#features">Features</a>
-        <a href="#privacy">Privacy</a>
-        <a href="https://itsash.in">itsash.in</a>
-      </div>
-      <div class="copyright">MIT License &middot; Built by <a href="https://itsash.in">Ashvini Jangid</a></div>
+      </a>
+      <ul class="footer-links">
+        <li><a href="https://github.com/its-ash/Nodio">GitHub</a></li>
+        <li><a href="https://github.com/its-ash/Nodio/releases">Releases</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="https://itsash.in">itsash.in</a></li>
+      </ul>
+      <p class="footer-copy">MIT License. Made by <a href="https://itsash.in">Ashvini Jangid</a>.</p>
     </div>
   </footer>
 

@@ -1,6 +1,8 @@
 import AppKit
+import ApplicationServices
 import AVFoundation
 import Combine
+import UserNotifications
 
 @main
 enum VoxTypeApp {
@@ -37,7 +39,7 @@ private final class Session {
 
 // MARK: - AppDelegate
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem!
     private var hotkeyManager: HotkeyManager!
     private let audioRecorder = AudioRecorder()
@@ -46,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hudController = HUDWindowController()
     private lazy var models = ModelCenter(recognizer: speechRecognizer)
     private lazy var settingsWindow = SettingsWindowController(models: models)
+    private lazy var onboarding = OnboardingWindowController(models: models)
     private let settings = AppSettings.shared
     private let history = HistoryStore.shared
     let transcriptionStore = TranscriptionStore()
@@ -59,13 +62,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        UNUserNotificationCenter.current().delegate = self
 
         setupMenuBar()
         setupHotkey()
+        models.onReadyAfterDownload = { [weak self] in
+            guard let self else { return }
+            ReadyNotifier.post(hotkey: self.settings.hotkey.title)
+        }
         models.activate()
         setupUpdateChecks()
 
-        requestMicrophonePermissionOnLaunch()
+        let micOK = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        if !OnboardingWindowController.isDone || !micOK || !AXIsProcessTrusted() {
+            onboarding.show()
+        } else {
+            requestMicrophonePermissionOnLaunch()
+        }
+    }
+
+    /// Show the banner even while a Nodio window has focus.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 
     private func setupUpdateChecks() {
@@ -111,6 +132,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.rebuildMenu(menu)
             }
             .store(in: &bag)
+        models.$phase
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.updateStatusIcon($0) }
+            .store(in: &bag)
+    }
+
+    /// The menu bar icon shows when the model is not usable yet.
+    private func updateStatusIcon(_ phase: ModelCenter.Phase) {
+        guard let button = statusItem.button else { return }
+        let symbol: String? = switch phase {
+        case .downloading, .verifying, .loading: "arrow.down.circle"
+        case .failed, .missing: "exclamationmark.triangle"
+        case .ready: nil
+        }
+        let image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: phase.hudMessage) }
+            ?? loadMenuBarIcon()
+            ?? NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Nodio")
+        image?.isTemplate = true
+        button.image = image
+        button.toolTip = phase == .ready ? "Nodio: ready" : "Nodio: \(phase.hudMessage)"
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -149,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add("Sound Feedback", #selector(toggleSoundFeedback), on: settings.soundFeedback)
 
         menu.addItem(.separator())
+        add("Setup Guide…", #selector(openOnboarding))
         add("History…", #selector(openHistory), key: "y")
         add("Settings…", #selector(openSettings), key: ",")
         add("Check for Updates…", #selector(checkForUpdates))
@@ -165,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleSoundFeedback() { settings.soundFeedback.toggle() }
     @objc private func retryModel() { models.retry() }
     @objc private func openSettings() { settingsWindow.show(.general) }
+    @objc private func openOnboarding() { onboarding.show() }
     @objc private func openHistory() { settingsWindow.show(.history) }
     @objc private func checkForUpdates() { UpdateChecker.check(userInitiated: true) }
     @objc private func resetInjectionProfiles() { InjectionProfileStore.shared.reset() }
@@ -271,8 +315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard models.isReady else {
             debugLog("startRecording ignored — model not ready: \(models.status)")
             hudController.show()
-            showFailure("Model not ready yet")
+            showFailure(models.phase.hudMessage)
             models.retry()
+            if case .failed = models.phase { onboarding.show() }
             return
         }
         isRecording = true

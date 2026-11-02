@@ -23,6 +23,7 @@ Built with **Swift, SwiftUI, AVFoundation, [whisper.cpp](https://github.com/ggml
 - **Microphone picker** — choose the input and test its level in Settings.
 - **Model manager** — download, delete, or redownload models. Each file is checked with SHA-256.
 - **Update check** — daily check of GitHub Releases, plus *Check for Updates…*.
+- **Setup guide** — on first launch, a window shows Microphone, Accessibility, and the model download with live progress. The menu bar icon shows a download arrow until the model is ready, and a notification tells you when it is.
 - **Floating HUD** — a compact, always-on-top pill with live waveform bars shows Nodio is listening. No windows, no distractions.
 - **Smart text delivery** — uses the Accessibility API (`kAXFocusedUIElementAttribute`) to inject text directly at the cursor; falls back to paste synthesis (Cmd+V) for Electron apps like VS Code; copies to clipboard when no text field is focused.
 - **Copy last message** — re-use your last transcription from the menu bar, one click away.
@@ -82,6 +83,7 @@ Nodio/
     ├── AudioDevices.swift  # Input devices + mic test
     ├── UpdateChecker.swift # GitHub Releases check
     ├── SettingsView.swift  # Settings window (SwiftUI)
+    ├── OnboardingView.swift # First-launch setup guide + ready notification
     ├── HUDWindowController.swift # Borderless, non-activating NSPanel
     ├── FloatingHUDView.swift   # SwiftUI capsule + waveform bars
     ├── TextInjector.swift  # AX injection / paste synthesis / clipboard fallback

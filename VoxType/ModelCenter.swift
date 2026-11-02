@@ -12,6 +12,27 @@ final class ModelCenter: ObservableObject {
     @Published private(set) var status = "Model: Not Downloaded"
     @Published private(set) var canRetry = false
 
+    /// Coarse state of the active model, for the menu bar icon, HUD, and setup guide.
+    enum Phase: Equatable {
+        case missing, downloading(Double), verifying, loading, ready, failed(String)
+
+        var hudMessage: String {
+            switch self {
+            case .missing: "Model not downloaded"
+            case .downloading(let p): "Downloading model… \(Int(p * 100))%"
+            case .verifying: "Checking model…"
+            case .loading: "Loading model…"
+            case .ready: "Ready"
+            case .failed: "Model download failed"
+            }
+        }
+    }
+    @Published private(set) var phase: Phase = .missing
+
+    /// Called once when a model that was downloaded during this run is loaded.
+    var onReadyAfterDownload: (() -> Void)?
+    private var downloadedThisRun = false
+
     private let recognizer: SpeechRecognizer
     private let settings = AppSettings.shared
     private var bag = Set<AnyCancellable>()
@@ -72,6 +93,10 @@ final class ModelCenter: ObservableObject {
             self.loadingID = nil
             if ok {
                 self.loadedID = id
+                if self.downloadedThisRun, self.settings.modelID == id {
+                    self.downloadedThisRun = false
+                    self.onReadyAfterDownload?()
+                }
             } else {
                 self.loadedID = nil
                 store.discardAndRetry()
@@ -99,6 +124,16 @@ final class ModelCenter: ObservableObject {
         if case .failed = vad.state, settings.vad {
             status += " · VAD failed"
             canRetry = true
+        }
+
+        switch a.state {
+        case .missing: phase = .missing
+        case .downloading(let p):
+            downloadedThisRun = true
+            phase = .downloading(p)
+        case .verifying: phase = .verifying
+        case .failed(let r): phase = .failed(r)
+        case .ready: phase = loadedID == a.file.id && loadingID == nil && recognizer.isReady ? .ready : .loading
         }
     }
 }
