@@ -26,7 +26,6 @@ make run
 - `ModelCenter.swift` — Keeps the chosen model loaded and the VAD file present.
 - `TextPostProcessor.swift` — Voice commands, “delete that” / “undo”, snippets.
 - `TranscriptFormatter.swift` — Fillers, casing, per-app style.
-- `AICleaner.swift` — Optional Apple FoundationModels cleanup (macOS 26+).
 - `HistoryStore.swift` — History + stats JSON.
 - `UpdateChecker.swift` — GitHub Releases check.
 - `SettingsView.swift` — SwiftUI Settings window.
@@ -45,4 +44,4 @@ Accessibility, Microphone. Use menu bar → Check Permissions…
 - `LSUIElement = true` (menu bar accessory, no Dock icon).
 - On-device recognition only (whisper.cpp). Language is fixed to Indian English.
 - `make build` embeds `whisper.framework` in `Contents/Frameworks`.
-- Default delivery is one insert on release (commands, snippets, styles, AI cleanup). Live typing streams words and skips those steps.
+- Default delivery is one insert on release (commands, snippets, styles). Live typing streams words and skips those steps.

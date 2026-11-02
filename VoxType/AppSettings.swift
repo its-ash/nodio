@@ -135,7 +135,6 @@ final class AppSettings: ObservableObject {
     @Published var voiceCommands: Bool { didSet { d.set(voiceCommands, forKey: Self.p + "voiceCommands") } }
     @Published var hinglish: Bool { didSet { d.set(hinglish, forKey: Self.p + "hinglish") } }
     @Published var vad: Bool { didSet { d.set(vad, forKey: Self.p + "vad") } }
-    @Published var aiCleanup: Bool { didSet { d.set(aiCleanup, forKey: Self.p + "aiCleanup") } }
     @Published var autoUpdateCheck: Bool { didSet { d.set(autoUpdateCheck, forKey: Self.p + "autoUpdateCheck") } }
     @Published var handsFree: Bool { didSet { d.set(handsFree, forKey: Self.p + "handsFree") } }
     @Published var modelID: String { didSet { d.set(modelID, forKey: Self.p + "modelID") } }
@@ -164,7 +163,6 @@ final class AppSettings: ObservableObject {
         voiceCommands = bool("voiceCommands", true)
         hinglish = bool("hinglish", false)
         vad = bool("vad", true)
-        aiCleanup = bool("aiCleanup", false)
         autoUpdateCheck = bool("autoUpdateCheck", true)
         handsFree = bool("handsFree", true)
         modelID = d.string(forKey: Self.p + "modelID") ?? ModelFile.turbo.id

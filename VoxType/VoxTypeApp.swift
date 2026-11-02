@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import Combine
+import Sentry
 import UserNotifications
 
 @main
@@ -58,9 +59,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var bag = Set<AnyCancellable>()
     private var updateTimer: Timer?
 
+    private static let sentryDSN = "https://8896ed4a00c858351cad58867d58a0fd@o4512363371692032.ingest.us.sentry.io/4512363378769920"
+
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        SentrySDK.start { o in
+            o.dsn = Self.sentryDSN
+            #if DEBUG
+            o.debug = true
+            o.environment = "debug"
+            #endif
+            o.sendDefaultPii = false
+        }
         NSApp.setActivationPolicy(.accessory)
         UNUserNotificationCenter.current().delegate = self
 
@@ -187,7 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         add(models.status, models.canRetry ? #selector(retryModel) : nil)
         add("Live Typing", #selector(toggleLiveTyping), on: settings.liveTyping)
         add("Hinglish Mode", #selector(toggleHinglish), on: settings.hinglish)
-        add("AI Cleanup", #selector(toggleAICleanup), on: settings.aiCleanup, enabled: AICleaner.isAvailable)
         add("Sound Feedback", #selector(toggleSoundFeedback), on: settings.soundFeedback)
 
         menu.addItem(.separator())
@@ -204,7 +214,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     @objc private func toggleLiveTyping() { settings.liveTyping.toggle() }
     @objc private func toggleHinglish() { settings.hinglish.toggle() }
-    @objc private func toggleAICleanup() { settings.aiCleanup.toggle() }
     @objc private func toggleSoundFeedback() { settings.soundFeedback.toggle() }
     @objc private func retryModel() { models.retry() }
     @objc private func openSettings() { settingsWindow.show(.general) }
@@ -423,19 +432,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         case .undo:
             textInjector.undo { [weak self] in if ownsHUD() { self?.showDone() } }
         case .insert(let text):
-            let deliver: (String) -> Void = { [weak self] final in
+            textInjector.insert(text) { [weak self] in
                 guard let self else { return }
-                self.textInjector.insert(final) { [weak self] in
-                    guard let self else { return }
-                    self.transcriptionStore.lastTranscription = final
-                    self.history.add(final, app: s.appName, seconds: seconds)
-                    if ownsHUD() { self.showDone() }
-                }
-            }
-            guard settings.aiCleanup, AICleaner.isAvailable else { return deliver(text) }
-            Task {
-                let cleaned = await AICleaner.clean(text, style: s.style)
-                await MainActor.run { deliver(cleaned) }
+                self.transcriptionStore.lastTranscription = text
+                self.history.add(text, app: s.appName, seconds: seconds)
+                if ownsHUD() { self.showDone() }
             }
         }
     }

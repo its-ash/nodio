@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "VoxType",
     platforms: [.macOS("13.3")],
+    dependencies: [
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.32.0"),
+    ],
     targets: [
         .binaryTarget(
             name: "whisper",
@@ -12,7 +15,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "VoxType",
-            dependencies: ["whisper"],
+            dependencies: ["whisper", .product(name: "Sentry", package: "sentry-cocoa")],
             path: "VoxType",
             exclude: ["Info.plist", "README.md", "Nodio.entitlements"],
             resources: [.copy("Resources/mic.svg"), .copy("AppIcon.icns")],

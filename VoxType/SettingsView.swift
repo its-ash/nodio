@@ -76,7 +76,7 @@ private struct GeneralTab: View {
                 Toggle("Voice activity detection (Silero)", isOn: $s.vad)
                 Toggle("Live typing (insert words while you speak)", isOn: $s.liveTyping)
                 if s.liveTyping {
-                    Text("Voice commands, snippets, app styles, and AI cleanup apply only when live typing is off.")
+                    Text("Voice commands, snippets, and app styles apply only when live typing is off.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -85,11 +85,6 @@ private struct GeneralTab: View {
                 Toggle("Voice commands", isOn: $s.voiceCommands)
                 Text("Say “new line”, “new paragraph”, “full stop”, “comma”, “question mark”. Say only “delete that” or “undo” to edit.")
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("AI cleanup (Apple on-device model)", isOn: $s.aiCleanup)
-                    .disabled(!AICleaner.isAvailable)
-                if let why = AICleaner.unavailableReason {
-                    Text(why).font(.caption).foregroundStyle(.secondary)
-                }
             }
             Section("Microphone") {
                 Picker("Input", selection: $s.micUID) {

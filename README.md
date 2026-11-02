@@ -17,8 +17,7 @@ Built with **Swift, SwiftUI, AVFoundation, [whisper.cpp](https://github.com/ggml
 - **Voice commands** — “new line”, “new paragraph”, “full stop”, “comma”, “question mark”. Say only “delete that” or “undo” to edit.
 - **Snippets** — say “my email” and Nodio types your saved text.
 - **Per-app styles** — casual in chat apps, formal in mail, code-safe in IDEs and terminals. You can override per app.
-- **AI cleanup** — optional grammar fix and list formatting with Apple’s on-device model (macOS 26 + Apple Intelligence).
-- **Live preview or live typing** — the HUD shows words while you speak. Live typing inserts them at once (commands, snippets, styles, and AI cleanup need it off).
+- **Live preview or live typing** — the HUD shows words while you speak. Live typing inserts them at once (commands, snippets, and styles need it off).
 - **History and stats** — search, copy, delete, and export past dictations. See words per day and time saved. Stored on this Mac only.
 - **Microphone picker** — choose the input and test its level in Settings.
 - **Model manager** — download, delete, or redownload models. Each file is checked with SHA-256.
@@ -78,7 +77,6 @@ Nodio/
     ├── ModelCenter.swift   # Active model + VAD lifecycle
     ├── TextPostProcessor.swift # Voice commands + snippets
     ├── TranscriptFormatter.swift # Fillers, casing, per-app style
-    ├── AICleaner.swift     # Apple FoundationModels cleanup
     ├── HistoryStore.swift  # History + stats (JSON)
     ├── AudioDevices.swift  # Input devices + mic test
     ├── UpdateChecker.swift # GitHub Releases check
@@ -102,7 +100,6 @@ Nodio/
 | `WhisperModelStore.swift` | One ggml file: download, SHA-256 check, delete |
 | `ModelCenter.swift` | Keeps the chosen model loaded and the VAD file present |
 | `TextPostProcessor.swift` | Spoken punctuation, “delete that” / “undo”, snippets |
-| `AICleaner.swift` | Optional cleanup with Apple FoundationModels, 6 s timeout |
 | `HistoryStore.swift` | History (last 1000) and stats in Application Support |
 | `SettingsView.swift` | General, Models, Dictionary, App Styles, History, Stats tabs |
 | `HUDWindowController.swift` | Borderless, non-activating, always-on-top `NSPanel` |
@@ -113,7 +110,7 @@ Nodio/
 
 1. **Hold Fn to record** — press and hold the Fn/Globe key; the floating pill appears with a live waveform.
 2. **Speak** — Whisper decodes your audio on the device while you hold the key; the HUD shows the words.
-3. **Release** — Whisper does a last full pass. Nodio applies voice commands, snippets, the app style, and (if on) AI cleanup.
+3. **Release** — Whisper does a last full pass. Nodio applies voice commands, snippets, and the app style.
 4. **Text lands where you are** — the text goes in at your cursor. No field? It is pasted, and stays on your clipboard.
 
 ## Permissions
