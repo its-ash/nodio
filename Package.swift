@@ -17,7 +17,7 @@ let package = Package(
             name: "VoxType",
             dependencies: ["whisper", .product(name: "Sentry", package: "sentry-cocoa")],
             path: "VoxType",
-            exclude: ["Info.plist", "README.md", "Nodio.entitlements", "Fix Nodio.terminal"],
+            exclude: ["Info.plist", "README.md", "Nodio.entitlements"],
             resources: [.copy("Resources/mic.svg"), .copy("AppIcon.icns")],
             linkerSettings: [
                 .linkedFramework("Cocoa"),

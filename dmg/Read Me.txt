@@ -1,0 +1,26 @@
+Install Nodio
+=============
+
+1. Drag Nodio to the Applications folder.
+2. Open Nodio from Applications.
+
+
+If macOS says "Nodio is damaged" or "Nodio cannot be opened"
+------------------------------------------------------------
+
+Nodio is not from the App Store, so macOS can block it. Do one of these:
+
+A. Double-click "Fix Nodio.terminal" in this window.
+
+B. Open Terminal, paste this command, and press Return:
+
+xattr -dr com.apple.quarantine /Applications/Nodio.app
+
+Then open Nodio again.
+
+
+First launch
+------------
+
+Nodio asks for Microphone and Accessibility access. Follow the setup guide.
+The speech model downloads one time. Then hold Fn and speak.
