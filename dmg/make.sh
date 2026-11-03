@@ -33,6 +33,10 @@ SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 20 ))
 hdiutil create -volname "$VOL" -srcfolder "$STAGE" -fs HFS+ -format UDRW -size "${SIZE_MB}m" -ov "$TMP/rw.dmg" -quiet
 MNT="$(hdiutil attach "$TMP/rw.dmg" -readwrite -noverify -noautoopen | awk -F'\t' '/\/Volumes\//{print $NF; exit}')"
 [ -n "$MNT" ] || { echo "make.sh: cannot mount image" >&2; exit 1; }
+# Stop file-event logs on the volume and hide the helper folders.
+rm -rf "$MNT/.fseventsd" 2>/dev/null || true
+mkdir -p "$MNT/.fseventsd" 2>/dev/null && touch "$MNT/.fseventsd/no_log" 2>/dev/null || true
+chflags hidden "$MNT/.background" "$MNT/.fseventsd" 2>/dev/null || true
 
 echo "→ Arranging the window (Finder may ask for permission)…"
 osascript - "$(basename "$MNT")" <<'APPLESCRIPT'
@@ -54,7 +58,19 @@ on run argv
       set position of item "Applications" of container window to {495, 150}
       set position of item "Read Me.txt" of container window to {250, 300}
       set position of item "Fix Nodio.terminal" of container window to {410, 300}
+      -- Hidden items show when Finder shows all files. Finder puts them above
+      -- the icons and scrolls the view, so the background no longer lines up.
+      -- Move them out of the window, below and to the right.
+      repeat with n in {".background", ".fseventsd", ".DS_Store", ".Trashes", ".VolumeIcon.icns"}
+        try
+          set position of item (n as text) of container window to {900, 900}
+        end try
+      end repeat
       update without registering applications
+      delay 1
+      close
+      -- Open again so Finder saves the scroll position at the top-left.
+      open
       delay 1
       close
     end tell
