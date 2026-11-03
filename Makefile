@@ -43,8 +43,7 @@ deploy: bump build
 	@rm -rf $(DMG_STAGING) $(DMG)
 	@mkdir -p $(DMG_STAGING)
 	@cp -R $(APP) $(DMG_STAGING)/
-	@cp "VoxType/Install Nodio.command" $(DMG_STAGING)/
-	@chmod +x "$(DMG_STAGING)/Install Nodio.command"
+	@cp "VoxType/Fix Nodio.terminal" $(DMG_STAGING)/
 	@ln -s /Applications $(DMG_STAGING)/Applications
 	@hdiutil create -volname "Nodio" -srcfolder $(DMG_STAGING) -ov -format UDZO $(DMG)
 	@rm -rf $(DMG_STAGING)
@@ -62,7 +61,7 @@ deploy: bump build
 	@echo "→ Creating GitHub release v$(VERSION)…"
 	@gh release create v$(VERSION) $(DMG) \
 		--title "Nodio v$(VERSION)" \
-		--notes "Download Nodio.dmg, open it, and double-click Install Nodio.command (or drag Nodio to Applications).\n\nRequires macOS 13.3+ (Ventura).\nGrant Accessibility and Microphone permissions on first launch. The Whisper model (~574 MB) downloads once on first launch." \
+		--notes "Download Nodio.dmg, open it, drag Nodio to Applications, then double-click Fix Nodio.terminal.\n\nRequires macOS 13.3+ (Ventura).\nGrant Accessibility and Microphone permissions on first launch. The Whisper model (~574 MB) downloads once on first launch." \
 		--latest || \
 		echo "→ Release v$(VERSION) may already exist. Updating assets…"
 	@gh release upload v$(VERSION) $(DMG) --clobber || true
