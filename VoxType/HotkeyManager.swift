@@ -76,9 +76,8 @@ final class HotkeyManager {
     // MARK: - Public
 
     func checkAccessibilityAndStart() {
-        let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        )
+        // Silent check: the setup guide asks for access, so no system dialog here.
+        let trusted = AXIsProcessTrusted()
         HotkeyManager.debugLog("checkAccessibilityAndStart: trusted=\(trusted)")
         if trusted {
             start()

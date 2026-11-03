@@ -5,6 +5,59 @@ import Combine
 import SwiftUI
 import UserNotifications
 
+// MARK: - Accessibility Trust
+
+/// Ad-hoc signed builds get a new code hash on each install, so an old
+/// Accessibility entry stays in the list but no longer matches. Remove the
+/// stale entry so macOS adds a fresh one on the next prompt.
+enum AccessibilityTrust {
+    private static let buildKey = "com.nodio.app.axBuild"
+    private static var listed = false
+
+    /// Adds a fresh entry to the Accessibility list once per launch. Only the
+    /// prompt option adds the entry, so macOS shows its dialog this one time.
+    /// Returns true if the dialog was shown (it has its own Open Settings button).
+    @discardableResult
+    static func request() -> Bool {
+        guard !listed, !AXIsProcessTrusted() else { return false }
+        listed = true
+        reset()
+        _ = AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        )
+        return true
+    }
+
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0" }
+
+    /// Once per build: if this build is not trusted, reset its entry.
+    static func resetIfNewBuild() {
+        let d = UserDefaults.standard
+        guard d.string(forKey: buildKey) != build else { return }
+        d.set(build, forKey: buildKey)
+        if !AXIsProcessTrusted() { reset() }
+    }
+
+    /// Removes this app's Accessibility entry (no admin needed for own bundle ID).
+    @discardableResult
+    static func reset() -> Bool {
+        guard let id = Bundle.main.bundleIdentifier, !AXIsProcessTrusted() else { return false }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "Accessibility", id]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do {
+            try p.run()
+            p.waitUntilExit()
+            return p.terminationStatus == 0
+        } catch {
+            NSLog("AccessibilityTrust: tccutil failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+}
+
 // MARK: - Window
 
 /// First-launch setup guide: microphone, accessibility, and the model download.
@@ -81,10 +134,8 @@ final class PermissionMonitor: ObservableObject {
     }
 
     func requestAccessibility() {
-        _ = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        )
-        open("Privacy_Accessibility")
+        guard !AXIsProcessTrusted() else { return refresh() }
+        if !AccessibilityTrust.request() { open("Privacy_Accessibility") }
     }
 
     private func open(_ pane: String) {

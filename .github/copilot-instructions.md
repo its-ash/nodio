@@ -21,7 +21,7 @@ make run
 - `HotkeyManager.swift` — Quartz Event Tap: hold to talk, double-tap hands-free, chord detection.
 - `AudioRecorder.swift` — AVAudioEngine capture from the chosen device + RMS power metering.
 - `AudioDevices.swift` — CoreAudio input list, device select, `MicTester`.
-- `SpeechRecognizer.swift` — whisper.cpp (XCFramework binary target), Indian English only, live re-decode, VAD, prompt hints.
+- `SpeechRecognizer.swift` — whisper.cpp (XCFramework binary target), English / Hinglish / Hindi, live re-decode, VAD, prompt hints.
 - `WhisperModelStore.swift` — One ggml file in Application Support: download, SHA-256, delete.
 - `ModelCenter.swift` — Keeps the chosen model loaded and the VAD file present.
 - `TextPostProcessor.swift` — Voice commands, “delete that” / “undo”, snippets.
@@ -42,6 +42,6 @@ Accessibility, Microphone. Use menu bar → Check Permissions…
 
 - SwiftPM package (`Package.swift`), no Xcode project needed.
 - `LSUIElement = true` (menu bar accessory, no Dock icon).
-- On-device recognition only (whisper.cpp). Language is fixed to Indian English.
+- On-device recognition only (whisper.cpp). One language at a time: English (India) or Hinglish (Hindi decode + `Hinglish.romanize` to Latin).
 - `make build` embeds `whisper.framework` in `Contents/Frameworks`.
 - Default delivery is one insert on release (commands, snippets, styles). Live typing streams words and skips those steps.

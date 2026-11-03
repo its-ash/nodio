@@ -72,7 +72,10 @@ private struct GeneralTab: View {
                 Toggle("Hands-free: double-tap to start, tap to stop", isOn: $s.handsFree)
             }
             Section("Recognition") {
-                Toggle("Hinglish mode (Hindi + English in Latin letters)", isOn: $s.hinglish)
+                Picker("Language", selection: $s.language) {
+                    ForEach(DictationLanguage.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.radioGroup)
                 Toggle("Voice activity detection (Silero)", isOn: $s.vad)
                 Toggle("Live typing (insert words while you speak)", isOn: $s.liveTyping)
                 if s.liveTyping {

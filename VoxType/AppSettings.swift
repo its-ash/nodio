@@ -77,6 +77,21 @@ enum AppStyle: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+// MARK: - Language
+
+enum DictationLanguage: String, CaseIterable, Identifiable {
+    case english, hinglish
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .english: "English (India)"
+        case .hinglish: "Hinglish"
+        }
+    }
+}
+
 // MARK: - Hotkey
 
 enum HotkeyChoice: String, CaseIterable, Identifiable {
@@ -133,7 +148,7 @@ final class AppSettings: ObservableObject {
     @Published var autoFormat: Bool { didSet { d.set(autoFormat, forKey: Self.p + "autoFormat") } }
     @Published var liveTyping: Bool { didSet { d.set(liveTyping, forKey: Self.p + "liveTyping") } }
     @Published var voiceCommands: Bool { didSet { d.set(voiceCommands, forKey: Self.p + "voiceCommands") } }
-    @Published var hinglish: Bool { didSet { d.set(hinglish, forKey: Self.p + "hinglish") } }
+    @Published var language: DictationLanguage { didSet { d.set(language.rawValue, forKey: Self.p + "language") } }
     @Published var vad: Bool { didSet { d.set(vad, forKey: Self.p + "vad") } }
     @Published var autoUpdateCheck: Bool { didSet { d.set(autoUpdateCheck, forKey: Self.p + "autoUpdateCheck") } }
     @Published var handsFree: Bool { didSet { d.set(handsFree, forKey: Self.p + "handsFree") } }
@@ -161,7 +176,9 @@ final class AppSettings: ObservableObject {
         autoFormat = bool("autoFormat", true)
         liveTyping = bool("liveTyping", false)
         voiceCommands = bool("voiceCommands", true)
-        hinglish = bool("hinglish", false)
+        let lang = d.string(forKey: Self.p + "language")
+        language = lang == "hindi" ? .hinglish
+            : lang.flatMap(DictationLanguage.init(rawValue:)) ?? (bool("hinglish", false) ? .hinglish : .english)
         vad = bool("vad", true)
         autoUpdateCheck = bool("autoUpdateCheck", true)
         handsFree = bool("handsFree", true)

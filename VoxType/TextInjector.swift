@@ -50,19 +50,24 @@ final class TextInjector {
 
     // MARK: - One-Shot Delivery
 
-    /// Inserts `text` once at the cursor: AX first, then one paste.
+    /// Inserts `text` once at the cursor: AX first, then one paste that
+    /// keeps the user's clipboard. With no input field, the text goes on the clipboard.
     func insert(_ text: String, completion: (() -> Void)? = nil) {
         injectionQueue.async {
             defer { if let completion { DispatchQueue.main.async(execute: completion) } }
             guard !text.isEmpty else { return }
             let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
             let knownPasteOnly = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) } == .paste
-            if !knownPasteOnly, let el = self.focusedTextElement(), self.inject(text, into: el) {
+            let el = knownPasteOnly ? nil : self.focusedTextElement()
+            if let el, self.inject(text, into: el) {
                 self.debugLog("insert: AX succeeded")
                 if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
-            } else {
+            } else if knownPasteOnly || el != nil {
                 self.debugLog("insert: paste fallback")
                 self.pasteNow(text)
+            } else {
+                self.debugLog("insert: no input field, copying to clipboard")
+                self.copyToClipboard(text)
             }
             self.lastInserted = text
         }
@@ -191,9 +196,28 @@ final class TextInjector {
             copyToClipboard(text)
             return
         }
+        let pb = NSPasteboard.general
+        let saved = snapshot(pb)
         copyToClipboard(text)
-        if postPasteCommand(), let bundleID {
-            InjectionProfileStore.shared.record(.paste, for: bundleID)
+        let marker = pb.changeCount
+        guard postPasteCommand() else { return }
+        if let bundleID { InjectionProfileStore.shared.record(.paste, for: bundleID) }
+        // The target app reads the pasteboard after the key event; give it time, then restore.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.restoreDelay) {
+            guard pb.changeCount == marker else { return }
+            pb.clearContents()
+            if !saved.isEmpty { pb.writeObjects(saved) }
+        }
+    }
+
+    private static let restoreDelay: TimeInterval = 0.6
+
+    /// Deep copy of every pasteboard item and type, so it can be written back.
+    private func snapshot(_ pb: NSPasteboard) -> [NSPasteboardItem] {
+        (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for t in item.types { if let d = item.data(forType: t) { copy.setData(d, forType: t) } }
+            return copy
         }
     }
 

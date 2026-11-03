@@ -10,8 +10,8 @@ Built with **Swift, SwiftUI, AVFoundation, [whisper.cpp](https://github.com/ggml
 
 - **Hotkey** — Fn/Globe, Right Option, Right Command, or Right Control. Hold to record. Key chords such as ⌘C are ignored.
 - **Hands-free** — double-tap the hotkey to start, tap once to stop.
-- **On-device Whisper** — whisper.cpp with Metal. Pick Small, Medium, or Large v3 Turbo. Indian English only. Audio never leaves the Mac.
-- **Hinglish mode** — Hindi + English, written in Latin letters.
+- **On-device Whisper** — whisper.cpp with Metal. Pick Small, Medium, or Large v3 Turbo. Audio never leaves the Mac.
+- **Language** — pick one: English (India) or Hinglish (Hindi in Latin letters).
 - **Voice activity detection** — Silero VAD (built into whisper.cpp) skips silence, so fewer wrong words.
 - **Custom vocabulary** — your names, places, and tech words go to Whisper as hints.
 - **Voice commands** — “new line”, “new paragraph”, “full stop”, “comma”, “question mark”. Say only “delete that” or “undo” to edit.

@@ -48,6 +48,9 @@ final class ModelCenter: ObservableObject {
         settings.$modelID.dropFirst().removeDuplicates()
             .sink { [weak self] _ in DispatchQueue.main.async { self?.activate() } }
             .store(in: &bag)
+        settings.$language.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
+            .store(in: &bag)
         settings.$vad.dropFirst().removeDuplicates()
             .sink { [weak self] on in if on { DispatchQueue.main.async { self?.vad.prepare() } } }
             .store(in: &bag)
@@ -119,7 +122,7 @@ final class ModelCenter: ObservableObject {
             status = "Model Download Failed (\(reason)) — Retry"
             canRetry = true
         case .ready:
-            status = loadingID != nil ? "Loading Model…" : "Model: \(a.file.title) · Indian English"
+            status = loadingID != nil ? "Loading Model…" : "Model: \(a.file.title) · \(settings.language.title)"
         }
         if case .failed = vad.state, settings.vad {
             status += " · VAD failed"

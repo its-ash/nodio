@@ -65,10 +65,9 @@ final class HUDWindowController {
 
     /// Live transcript tail shown next to the waveform while recording.
     func updatePreview(_ text: String) {
-        let wasEmpty = preview.isEmpty
         preview = text.replacingOccurrences(of: "\n", with: " ")
         updateView()
-        if wasEmpty != preview.isEmpty, let panel { position(panel) }
+        if let panel { position(panel) }
     }
 
     func updateState(_ state: HUDState, message: String? = nil) {
@@ -90,10 +89,12 @@ final class HUDWindowController {
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
         let frame = screen.visibleFrame
-        let width = FloatingHUDView.width(state: current, preview: preview, message: message)
-        let x = frame.midX - width / 2
-        let y = frame.maxY - 120
-        panel.setFrame(NSRect(x: x, y: y, width: width, height: panel.frame.height), display: true)
+        let size = FloatingHUDView.size(state: current, preview: preview, message: message)
+        // Keep the top edge fixed so the pill grows downward.
+        let rect = NSRect(x: frame.midX - size.width / 2, y: frame.maxY - 84 - size.height,
+                          width: size.width, height: size.height)
+        guard panel.frame != rect else { return }
+        panel.setFrame(rect, display: true)
     }
 }
 

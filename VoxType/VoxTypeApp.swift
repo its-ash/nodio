@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         NSApp.setActivationPolicy(.accessory)
         UNUserNotificationCenter.current().delegate = self
 
+        AccessibilityTrust.resetIfNewBuild()
         setupMenuBar()
         setupHotkey()
         models.onReadyAfterDownload = { [weak self] in
@@ -197,7 +198,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(.separator())
         add(models.status, models.canRetry ? #selector(retryModel) : nil)
         add("Live Typing", #selector(toggleLiveTyping), on: settings.liveTyping)
-        add("Hinglish Mode", #selector(toggleHinglish), on: settings.hinglish)
+        let lang = NSMenu()
+        for l in DictationLanguage.allCases {
+            let item = lang.addItem(withTitle: l.title, action: #selector(selectLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = l.rawValue
+            item.state = settings.language == l ? .on : .off
+        }
+        menu.addItem(withTitle: "Language: \(settings.language.title)", action: nil, keyEquivalent: "").submenu = lang
         add("Sound Feedback", #selector(toggleSoundFeedback), on: settings.soundFeedback)
 
         menu.addItem(.separator())
@@ -213,7 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     @objc private func toggleLiveTyping() { settings.liveTyping.toggle() }
-    @objc private func toggleHinglish() { settings.hinglish.toggle() }
+    @objc private func selectLanguage(_ item: NSMenuItem) {
+        if let raw = item.representedObject as? String, let l = DictationLanguage(rawValue: raw) { settings.language = l }
+    }
     @objc private func toggleSoundFeedback() { settings.soundFeedback.toggle() }
     @objc private func retryModel() { models.retry() }
     @objc private func openSettings() { settingsWindow.show(.general) }
@@ -352,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             self.playFeedback(.start)
 
             let config = SpeechRecognizer.Config(
-                hinglish: self.settings.hinglish,
+                language: self.settings.language,
                 vocabulary: self.settings.vocabularyTerms,
                 vadModelPath: self.models.vadPath
             )

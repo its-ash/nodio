@@ -17,12 +17,33 @@ struct FloatingHUDView: View {
     var preview: String = ""
     var message: String?
 
-    static func width(state: HUDState, preview: String, message: String?) -> CGFloat {
+    private static let charWidth: CGFloat = 6
+    private static let lineHeight: CGFloat = 14
+    private static let maxLines = 4
+    private static let minPreviewWidth: CGFloat = 360
+    private static let maxPreviewWidth: CGFloat = 600
+    /// Waveform, spacing, and side padding next to the preview text.
+    private static let chrome: CGFloat = 50 + 10 + 28
+
+    /// Grows wider as the user speaks, then taller, up to `maxLines`.
+    static func size(state: HUDState, preview: String, message: String?) -> CGSize {
         switch state {
-        case .recording: preview.isEmpty ? 120 : 360
-        case .transcribing, .done: 150
-        case .failed: message == nil ? 150 : 260
+        case .recording where !preview.isEmpty:
+            let textWidth = CGFloat(preview.count) * charWidth
+            let w = min(maxPreviewWidth, max(minPreviewWidth, textWidth + chrome))
+            let lines = min(maxLines, max(1, Int((textWidth / (w - chrome)).rounded(.up))))
+            return CGSize(width: w, height: max(36, CGFloat(lines) * lineHeight + 16))
+        case .recording: return CGSize(width: 120, height: 36)
+        case .transcribing, .done: return CGSize(width: 150, height: 36)
+        case .failed: return CGSize(width: message == nil ? 150 : 260, height: 36)
         }
+    }
+
+    /// Tail of the preview that fits the box, so the newest words stay visible.
+    private var visiblePreview: String {
+        let w = Self.size(state: state, preview: preview, message: message).width - Self.chrome
+        let cap = max(1, Int(w / Self.charWidth) * Self.maxLines - 1)
+        return preview.count > cap ? "…" + preview.suffix(cap - 1) : preview
     }
 
     @State private var animateGradient = false
@@ -49,7 +70,7 @@ struct FloatingHUDView: View {
             }
             .padding(.horizontal, 14)
         }
-        .frame(width: frameWidth, height: 36)
+        .frame(width: frameSize.width, height: frameSize.height)
         .onAppear {
             withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
                 animateGradient.toggle()
@@ -57,8 +78,8 @@ struct FloatingHUDView: View {
         }
     }
 
-    private var frameWidth: CGFloat {
-        Self.width(state: state, preview: preview, message: message)
+    private var frameSize: CGSize {
+        Self.size(state: state, preview: preview, message: message)
     }
 
     // MARK: - Subviews
@@ -93,11 +114,11 @@ struct FloatingHUDView: View {
         switch state {
         case .recording:
             if !preview.isEmpty {
-                Text(preview)
+                Text(visiblePreview)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-                    .truncationMode(.head)
+                    .lineLimit(Self.maxLines)
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .transcribing:
