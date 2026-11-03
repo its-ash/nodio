@@ -16,6 +16,7 @@ final class SpeechRecognizer {
     private static let silenceRMS: Float = 0.004
     private static let noSpeechProb: Float = 0.6
     private static let language = strdup("en")!
+    private static let hindi = strdup("hi")!
     private static let basePrompt = "Dictation in Indian English, with proper punctuation and capitalisation."
     private static let hinglishPrompt = "Haan, main kal office aaunga. Theek hai, meeting 5 baje rakhte hain. Thank you so much, bhai!"
 
@@ -46,6 +47,7 @@ final class SpeechRecognizer {
     private var qSession = 0
     private var qPrompt: UnsafeMutablePointer<CChar>?
     private var qVADPath: UnsafeMutablePointer<CChar>?
+    private var qHinglish = false
 
     // Guarded by `lock` (audio thread + whisper queue + main).
     private let lock = NSLock()
@@ -115,6 +117,7 @@ final class SpeechRecognizer {
             free(self.qVADPath)
             self.qPrompt = strdup(config.prompt)
             self.qVADPath = config.vadModelPath.flatMap { strdup($0) }
+            self.qHinglish = config.hinglish
         }
         timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
             self?.tick(id)
@@ -228,7 +231,8 @@ final class SpeechRecognizer {
 
         var p = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
         p.n_threads = Self.threads
-        p.language = UnsafePointer(Self.language)
+        // "en" makes Whisper translate Hindi speech; "hi" keeps the words as spoken.
+        p.language = UnsafePointer(qHinglish ? Self.hindi : Self.language)
         p.initial_prompt = qPrompt.map { UnsafePointer($0) }
         if let qVADPath {
             p.vad = true
@@ -255,7 +259,8 @@ final class SpeechRecognizer {
         return (0..<whisper_full_n_segments(ctx)).compactMap { i in
             guard whisper_full_get_segment_no_speech_prob(ctx, i) < Self.noSpeechProb,
                   let cstr = whisper_full_get_segment_text(ctx, i) else { return nil }
-            let text = String(cString: cstr).trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = String(cString: cstr).trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = qHinglish ? Self.romanize(raw) : raw
             guard !text.isEmpty, !Self.isNonSpeechTag(text) else { return nil }
             return Segment(text: text, t0: whisper_full_get_segment_t0(ctx, i))
         }
@@ -267,6 +272,15 @@ final class SpeechRecognizer {
     private static func isNonSpeechTag(_ s: String) -> Bool {
         guard let f = s.first, let l = s.last else { return true }
         return ("[(*".contains(f) && "])*".contains(l)) || s.allSatisfy { $0.isPunctuation || $0.isWhitespace }
+    }
+
+    /// Devanagari → plain Latin letters ("हाँ भाई" → "haan bhai"); Latin text passes through.
+    private static func romanize(_ s: String) -> String {
+        guard s.unicodeScalars.contains(where: { (0x0900...0x097F).contains($0.value) }) else { return s }
+        let latin = s.applyingTransform(.toLatin, reverse: false) ?? s
+        return (latin.applyingTransform(.stripDiacritics, reverse: false) ?? latin)
+            .replacingOccurrences(of: "।", with: ".")
+            .replacingOccurrences(of: "॥", with: ".")
     }
 
     private static func words(_ s: String) -> [String] {

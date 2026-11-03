@@ -152,8 +152,32 @@ final class TextInjector {
             return
         }
 
-        debugLog("live stream: buffering for paste at session end")
-        pendingPasteText += text
+        // No Cmd modifier and a private event source, so the held hotkey
+        // state stays intact (unlike repeated Cmd+V).
+        debugLog("live stream: typing via unicode key events")
+        if !typeUnicode(text) { pendingPasteText += text }
+    }
+
+    private func typeUnicode(_ text: String) -> Bool {
+        guard let src = CGEventSource(stateID: .privateState) else { return false }
+        let units = Array(text.utf16)
+        var i = 0
+        while i < units.count {
+            var end = min(i + 20, units.count)
+            if end < units.count, UTF16.isLeadSurrogate(units[end - 1]) { end -= 1 }
+            let chunk = Array(units[i..<end])
+            guard let down = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false) else { return false }
+            down.flags = []
+            up.flags = []
+            down.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+            up.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            usleep(3_000)
+            i = end
+        }
+        return true
     }
 
     /// Actually performs the paste — copies to clipboard and synthesizes

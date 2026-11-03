@@ -400,7 +400,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             s.liveText = text
             transcriptionStore.lastTranscription = text
             textInjector.updateLiveStream(fullText: text)
-        } else if !isFinal, isRecording, session === s {
+        }
+        if !isFinal, isRecording, session === s {
             hudController.updatePreview(raw)
         }
     }

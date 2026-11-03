@@ -1,4 +1,4 @@
-.PHONY: run build deploy clean release
+.PHONY: run build deploy clean release bump
 
 APP = build/Nodio.app
 BIN = .build/debug/VoxType
@@ -31,7 +31,14 @@ clean:
 	@swift package clean
 	@rm -rf build
 
-deploy: build
+bump:
+	@V="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' VoxType/Info.plist)"; \
+	B="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' VoxType/Info.plist)"; \
+	NEW="$$(echo "$$V" | awk -F. '{printf "%d.%d.0", $$1, $$2 + 1}')"; \
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $$NEW" -c "Set :CFBundleVersion $$((B + 1))" VoxType/Info.plist; \
+	echo "→ Version $$V → $$NEW (build $$((B + 1)))"
+
+deploy: bump build
 	@echo "→ Building DMG for release…"
 	@rm -rf $(DMG_STAGING) $(DMG)
 	@mkdir -p $(DMG_STAGING)
