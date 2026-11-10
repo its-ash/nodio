@@ -56,6 +56,7 @@ final class AudioRecorder {
             return true
         } catch {
             NSLog("AudioRecorder: engine start failed — \(error)")
+            e.stop()
             e.inputNode.removeTap(onBus: 0)
             return false
         }
@@ -66,9 +67,18 @@ final class AudioRecorder {
         isRecording = false
         stopPowerMetering()
 
-        engine?.inputNode.removeTap(onBus: 0)
-        engine?.stop()
-        engine = nil
+        // Stop the engine first, then remove the tap. Removing the tap while
+        // the engine is still running let the CoreAudio IO thread call into a
+        // tap that was already torn down: SIGSEGV at address 0 in
+        // HALC_ProxyIOContext::IOWorkLoop while the main thread was in
+        // -[AVAudioEngine stop] (crash report Nodio-2026-11-10-120445.ips).
+        // stop() is synchronous, so after it returns no more tap calls happen.
+        if let e = engine {
+            engine = nil
+            e.stop()
+            e.inputNode.removeTap(onBus: 0)
+            e.reset()
+        }
         powerHandler = nil
         levelLock.lock()
         latestLevel = 0

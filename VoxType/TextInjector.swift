@@ -57,17 +57,34 @@ final class TextInjector {
             defer { if let completion { DispatchQueue.main.async(execute: completion) } }
             guard !text.isEmpty else { return }
             let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            let knownPasteOnly = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) } == .paste
-            let el = knownPasteOnly ? nil : self.focusedTextElement()
-            if let el, self.inject(text, into: el) {
-                self.debugLog("insert: AX succeeded")
-                if let bundleID { InjectionProfileStore.shared.record(.ax, for: bundleID) }
-            } else if knownPasteOnly || el != nil {
-                self.debugLog("insert: paste fallback")
-                self.pasteNow(text)
-            } else {
-                self.debugLog("insert: no input field, copying to clipboard")
+            let app = bundleID ?? "?"
+
+            // No target app, or our own Settings/History window in front.
+            guard let bundleID, bundleID != Bundle.main.bundleIdentifier else {
+                self.debugLog("insert: no target app (\(app)), copying to clipboard")
                 self.copyToClipboard(text)
+                return
+            }
+
+            if self.prefersPaste(bundleID) {
+                self.debugLog("insert: paste-first app \(app)")
+                self.pasteNow(text, restoreClipboard: true)
+            } else if let el = self.focusedTextElement() {
+                if self.inject(text, into: el) {
+                    self.debugLog("insert: AX succeeded in \(app)")
+                    InjectionProfileStore.shared.record(.ax, for: bundleID)
+                } else {
+                    self.debugLog("insert: AX failed in \(app), paste fallback")
+                    InjectionProfileStore.shared.record(.paste, for: bundleID)
+                    self.pasteNow(text, restoreClipboard: true)
+                }
+            } else {
+                // Editors with custom text views (Zed, Sublime) and browsers
+                // that hide their AX tree report no editable element even with
+                // the cursor in a text field. Paste anyway, but leave the text
+                // on the clipboard: if nothing was focused, it isn't lost.
+                self.debugLog("insert: no AX text field in \(app), pasting and keeping text on clipboard")
+                self.pasteNow(text, restoreClipboard: false)
             }
             self.lastInserted = text
         }
@@ -113,7 +130,7 @@ final class TextInjector {
         injectionQueue.async {
             if !self.pendingPasteText.isEmpty {
                 self.debugLog("live stream ending: flushing buffered paste text")
-                self.pasteNow(self.pendingPasteText)
+                self.pasteNow(self.pendingPasteText, restoreClipboard: true)
             }
             self.committedWordCount = 0
             self.pendingPasteText = ""
@@ -149,7 +166,7 @@ final class TextInjector {
         guard !text.isEmpty else { return }
 
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let knownPasteOnly = bundleID.flatMap { InjectionProfileStore.shared.method(for: $0) } == .paste
+        let knownPasteOnly = bundleID.map(prefersPaste) ?? false
 
         if !knownPasteOnly, let focusedElement = focusedTextElement(), inject(text, into: focusedElement) {
             debugLog("live stream: AX insert succeeded")
@@ -189,19 +206,26 @@ final class TextInjector {
     /// Cmd+V once. Only ever called once per session, from `endLiveStream`,
     /// specifically to avoid the repeated-synthetic-key-event problem that
     /// motivated buffering in the first place.
-    private func pasteNow(_ text: String) {
-        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    /// `restoreClipboard` false leaves `text` on the clipboard, for targets
+    /// where the paste can't be confirmed to have landed.
+    private func pasteNow(_ text: String, restoreClipboard: Bool) {
         guard NSWorkspace.shared.frontmostApplication != nil else {
             debugLog("pasteNow: no frontmost app, copying to clipboard only")
             copyToClipboard(text)
             return
         }
+        if !CGPreflightPostEventAccess() {
+            debugLog("pasteNow: no permission to post key events — re-add Nodio under Accessibility")
+        }
         let pb = NSPasteboard.general
         let saved = snapshot(pb)
         copyToClipboard(text)
         let marker = pb.changeCount
-        guard postPasteCommand() else { return }
-        if let bundleID { InjectionProfileStore.shared.record(.paste, for: bundleID) }
+        guard postPasteCommand() else {
+            debugLog("pasteNow: could not create key events, text left on clipboard")
+            return
+        }
+        guard restoreClipboard else { return }
         // The target app reads the pasteboard after the key event; give it time, then restore.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.restoreDelay) {
             guard pb.changeCount == marker else { return }
@@ -210,7 +234,39 @@ final class TextInjector {
         }
     }
 
-    private static let restoreDelay: TimeInterval = 0.6
+    /// Electron and browser renderers read the pasteboard asynchronously;
+    /// 0.6 s was too short when the app was busy.
+    private static let restoreDelay: TimeInterval = 1.2
+
+    /// Apps where AX writes are unreliable even when they report success:
+    /// browsers (web frameworks such as React ignore AX value changes, and
+    /// Chrome hides its AX tree, AXError -25212), Electron editors, and
+    /// editors with custom text views (Zed, Sublime, JetBrains, terminals).
+    /// These get ⌘V straight away.
+    private static let pasteFirstApps: Set<String> = [
+        // Browsers
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary",
+        "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser",
+        "org.mozilla.firefox", "com.apple.Safari", "com.operasoftware.Opera",
+        "com.vivaldi.Vivaldi", "org.chromium.Chromium",
+        // Code editors and terminals
+        "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium",
+        "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf",
+        "dev.zed.Zed", "dev.zed.Zed-Preview",
+        "com.sublimetext.4", "com.sublimetext.3", "com.sublimetext",
+        "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable",
+        "com.mitchellh.ghostty", "net.kovidgoyal.kitty", "io.alacritty",
+        // Electron chat and notes apps
+        "net.whatsapp.WhatsApp", "com.tinyspeck.slackmacgap", "com.hnc.Discord",
+        "notion.id", "md.obsidian",
+    ]
+
+    private func prefersPaste(_ bundleID: String) -> Bool {
+        Self.pasteFirstApps.contains(bundleID)
+            || bundleID.hasPrefix("com.jetbrains.")
+            || bundleID.hasPrefix("com.google.Chrome.app.")
+            || InjectionProfileStore.shared.method(for: bundleID) == .paste
+    }
 
     /// Deep copy of every pasteboard item and type, so it can be written back.
     private func snapshot(_ pb: NSPasteboard) -> [NSPasteboardItem] {
