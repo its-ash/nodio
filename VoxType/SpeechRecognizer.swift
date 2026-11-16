@@ -17,7 +17,16 @@ final class SpeechRecognizer {
     private static let noSpeechProb: Float = 0.6
     private static let language = strdup("en")!
     private static let hindi = strdup("hi")!
-    private static let basePrompt = "Dictation in Indian English, with proper punctuation and capitalisation."
+    // Whisper reads the prompt as the text spoken just before the audio and
+    // copies its style, so a sample (punctuation, numerals, British
+    // spelling) works better than an instruction.
+    private static let basePrompt = "Okay, I've organised the notes from today's meeting. Let's review them on Monday at 5 pm, and I'll share the report with the team."
+    private static let beamSize: Int32 = 5
+    // Input conditioning: high-pass corner, and how far quiet input is raised.
+    private static let highPassHz = 80.0
+    private static let targetRMS: Float = 0.05
+    private static let maxGain: Float = 10
+    private static let peakLimit: Float = 0.9
     // Devanagari prompt: a Latin prompt makes Whisper answer in English. `Hinglish.romanize` turns the output into Latin letters.
     private static let hinglishPrompt = "हाँ, मैं कल ऑफिस आऊँगा। ठीक है, मीटिंग पाँच बजे रखते हैं। तुम क्या कर रहे हो? बहुत धन्यवाद, भाई!"
 
@@ -228,12 +237,15 @@ final class SpeechRecognizer {
 
     private func decode(_ window: [Float], final: Bool) -> [Segment] {
         guard let ctx else { return [] }
-        var pcm = window
+        var pcm = Self.condition(window)
         if pcm.count < Self.minDecodeSamples {
             pcm.append(contentsOf: repeatElement(0, count: Self.minDecodeSamples - pcm.count))
         }
 
-        var p = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+        // Beam search on the final pass only: more accurate but slower, and
+        // partials have to keep up with the tick.
+        var p = whisper_full_default_params(final ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY)
+        if final { p.beam_search.beam_size = Self.beamSize }
         p.n_threads = Self.threads
         // "en" makes Whisper translate Hindi speech; "hi" keeps the words as spoken.
         p.language = UnsafePointer(qLanguage == .english ? Self.language : Self.hindi)
@@ -269,6 +281,32 @@ final class SpeechRecognizer {
             return Segment(text: text, t0: whisper_full_get_segment_t0(ctx, i))
         }
     }
+
+    // MARK: - Input Conditioning
+
+    /// High-pass (rumble, fan and mains hum), then raise quiet input towards
+    /// speech level without clipping. Whisper and Silero VAD both do worse on
+    /// very quiet audio. Loud input is left alone.
+    private static func condition(_ x: [Float]) -> [Float] {
+        guard !x.isEmpty,
+              var hp = vDSP.Biquad(coefficients: highPass, channelCount: 1, sectionCount: 1, ofType: Float.self)
+        else { return x }
+        let y = hp.apply(input: x)
+        let rms = vDSP.rootMeanSquare(y)
+        let peak = vDSP.maximumMagnitude(y)
+        guard rms > 0, peak > 0 else { return y }
+        let gain = min(maxGain, targetRMS / rms, peakLimit / peak)
+        return gain > 1 ? vDSP.multiply(gain, y) : y
+    }
+
+    /// 2nd-order Butterworth high-pass (RBJ cookbook) as [b0, b1, b2, a1, a2] / a0.
+    private static let highPass: [Double] = {
+        let w0 = 2 * Double.pi * highPassHz / sampleRate
+        let alpha = sin(w0) / (2 * 0.5.squareRoot())
+        let c = cos(w0)
+        let a0 = 1 + alpha
+        return [(1 + c) / 2 / a0, -(1 + c) / a0, (1 + c) / 2 / a0, -2 * c / a0, (1 - alpha) / a0]
+    }()
 
     // MARK: - Helpers
 

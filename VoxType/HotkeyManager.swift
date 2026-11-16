@@ -11,6 +11,10 @@ final class HotkeyManager {
     private let onRelease: () -> Void
     private let onToggle: () -> Void
     private let isSessionActive: () -> Bool
+    /// Fresh key down, before the hold threshold. Lets the app open the mic early.
+    private let onKeyDown: () -> Void
+    /// The key down did not become a hold (tap or chord).
+    private let onKeyCancel: () -> Void
 
     /// Main thread only.
     var hotkey: HotkeyChoice = .fn {
@@ -52,12 +56,16 @@ final class HotkeyManager {
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void,
         onToggle: @escaping () -> Void,
-        isSessionActive: @escaping () -> Bool
+        isSessionActive: @escaping () -> Bool,
+        onKeyDown: @escaping () -> Void = {},
+        onKeyCancel: @escaping () -> Void = {}
     ) {
         self.onPress = onPress
         self.onRelease = onRelease
         self.onToggle = onToggle
         self.isSessionActive = isSessionActive
+        self.onKeyDown = onKeyDown
+        self.onKeyCancel = onKeyCancel
     }
 
     private func resetKeyState() {
@@ -164,6 +172,7 @@ final class HotkeyManager {
                 chorded = true
                 pendingPress?.cancel()
                 pendingPress = nil
+                onKeyCancel()
             }
             return Unmanaged.passUnretained(event)
         }
@@ -199,6 +208,7 @@ final class HotkeyManager {
                 DispatchQueue.main.asyncAfter(
                     deadline: .now() + Self.holdThreshold, execute: work
                 )
+                onKeyDown()
             }
         } else if !fnPressed && fnDown {
             pendingPress?.cancel()
@@ -218,7 +228,10 @@ final class HotkeyManager {
             } else {
                 fnDown = false
                 pendingRelease = nil
-                if !chorded { handleTap() }
+                if !chorded {
+                    onKeyCancel()
+                    handleTap()
+                }
                 chorded = false
             }
         }

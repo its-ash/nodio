@@ -312,7 +312,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 guard let self else { return }
                 self.isRecording ? self.stopRecording() : self.startRecording()
             },
-            isSessionActive: { [weak self] in self?.isRecording ?? false }
+            isSessionActive: { [weak self] in self?.isRecording ?? false },
+            onKeyDown: { [weak self] in self?.primeMicrophone() },
+            onKeyCancel: { [weak self] in self?.audioRecorder.cancelPrime() }
         )
         hotkeyManager.hotkey = settings.hotkey
         hotkeyManager.handsFreeEnabled = settings.handsFree
@@ -328,6 +330,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     // MARK: - Session
+
+    /// Opens the mic on hotkey down so speech during the hold threshold is
+    /// kept. Only when a session could start: model ready, mic already allowed.
+    private func primeMicrophone() {
+        guard !isRecording, models.isReady, micAuthorized else { return }
+        audioRecorder.prime(deviceUID: settings.micUID)
+    }
+
+    private var micAuthorized: Bool {
+        if #available(macOS 14, *) {
+            return AVAudioApplication.shared.recordPermission == .granted
+        }
+        return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    }
 
     private func startRecording() {
         guard !isRecording else { return }
@@ -346,6 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             guard let self, self.isRecording else { return }
             guard granted else {
                 self.isRecording = false
+                self.audioRecorder.cancelPrime()
                 self.openPermissions()
                 return
             }
@@ -386,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func stopRecording() {
-        guard isRecording else { return }
+        guard isRecording else { audioRecorder.cancelPrime(); return }
         isRecording = false
         debugLog("stopRecording called")
         playFeedback(.stop)
