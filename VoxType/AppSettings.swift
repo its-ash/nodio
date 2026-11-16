@@ -158,6 +158,7 @@ final class AppSettings: ObservableObject {
     @Published var vocabulary: String { didSet { d.set(vocabulary, forKey: Self.p + "vocabulary") } }
     @Published var snippets: [Snippet] { didSet { save(snippets, "snippets") } }
     @Published var appStyles: [String: AppStyle] { didSet { save(appStyles, "appStyles") } }
+    @Published var saveRecordings: Bool { didSet { d.set(saveRecordings, forKey: Self.p + "saveRecordings") } }
 
     var hotkey: HotkeyChoice { HotkeyChoice(rawValue: hotkeyRaw) ?? .fn }
     var model: ModelFile { ModelFile.speech(id: modelID) }
@@ -188,6 +189,7 @@ final class AppSettings: ObservableObject {
         vocabulary = d.string(forKey: Self.p + "vocabulary") ?? ""
         snippets = Self.load([Snippet].self, "snippets") ?? []
         appStyles = Self.load([String: AppStyle].self, "appStyles") ?? [:]
+        saveRecordings = bool("saveRecordings", false)
     }
 
     private func save<T: Encodable>(_ v: T, _ k: String) {

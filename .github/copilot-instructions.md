@@ -27,6 +27,7 @@ make run
 - `TextPostProcessor.swift` — Voice commands, “delete that” / “undo”, snippets.
 - `TranscriptFormatter.swift` — Fillers, casing, per-app style.
 - `HistoryStore.swift` — History + stats JSON.
+- `RecordingStore.swift` — Opt-in test recordings (WAV + Whisper text, last 30) for comparing changes.
 - `UpdateChecker.swift` — GitHub Releases check.
 - `SettingsView.swift` — SwiftUI Settings window.
 - `OnboardingView.swift` — First-launch setup guide (mic, accessibility, model progress), `ReadyNotifier`.

@@ -381,7 +381,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let config = SpeechRecognizer.Config(
                 language: self.settings.language,
                 vocabulary: self.settings.vocabularyTerms,
-                vadModelPath: self.models.vadPath
+                vadModelPath: self.models.vadPath,
+                saveRecording: self.settings.saveRecordings
             )
             self.speechRecognizer.startLiveSession(config: config) { [weak self] text, isFinal in
                 self?.handleTranscript(text, isFinal: isFinal, session: s)

@@ -104,6 +104,18 @@ private struct GeneralTab: View {
                 }
                 if let err = mic.error { Text(err).font(.caption).foregroundStyle(.red) }
             }
+            Section("Testing") {
+                Toggle("Save recordings for testing", isOn: $s.saveRecordings)
+                Text("Keeps the last \(RecordingStore.limit) dictations on this Mac as WAV audio with Whisper’s text, so changes can be compared on the same clips.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Show in Finder") {
+                        try? FileManager.default.createDirectory(at: RecordingStore.directory, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(RecordingStore.directory)
+                    }
+                    Button("Delete All", role: .destructive) { RecordingStore.deleteAll() }
+                }
+            }
             Section("App") {
                 Toggle("Sound feedback", isOn: $s.soundFeedback)
                 Toggle("Launch at login", isOn: $launchAtLogin)

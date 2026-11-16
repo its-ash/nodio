@@ -35,6 +35,8 @@ final class SpeechRecognizer {
         var language: DictationLanguage = .english
         var vocabulary: [String] = []
         var vadModelPath: String?
+        /// Keep the session's audio for `RecordingStore`.
+        var saveRecording = false
 
         var prompt: String {
             let head = switch language {
@@ -65,6 +67,8 @@ final class SpeechRecognizer {
     // Guarded by `lock` (audio thread + whisper queue + main).
     private let lock = NSLock()
     private var samples: [Float] = []
+    /// The whole session, untrimmed; nil unless the session saves its recording.
+    private var recording: [Float]?
     private var accepting = false
     private var converter: AVAudioConverter?
 
@@ -118,6 +122,7 @@ final class SpeechRecognizer {
 
         lock.lock()
         samples.removeAll(keepingCapacity: true)
+        recording = config.saveRecording ? [] : nil
         converter = nil
         accepting = true
         lock.unlock()
@@ -164,7 +169,9 @@ final class SpeechRecognizer {
             if let err { Self.debugLog("convert error — \(err)") }
             return
         }
-        samples.append(contentsOf: UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength)))
+        let converted = UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength))
+        samples.append(contentsOf: converted)
+        recording?.append(contentsOf: converted)
     }
 
     /// Runs one last full decode, delivers it through the session's
@@ -173,9 +180,12 @@ final class SpeechRecognizer {
         timer?.invalidate()
         timer = nil
 
+        // Taken here, not on the queue: a new session may reset it before the queue runs.
         lock.lock()
         let wasAccepting = accepting
         accepting = false
+        let recorded = recording
+        recording = nil
         lock.unlock()
 
         let id = sessionID
@@ -184,7 +194,13 @@ final class SpeechRecognizer {
         guard wasAccepting else { onSettled?(); return }
 
         queue.async { [weak self] in
-            let text = self?.qSession == id ? self?.transcribe(final: true) ?? "" : ""
+            var text = ""
+            if let self, self.qSession == id {
+                text = self.transcribe(final: true)
+                if let recorded {
+                    RecordingStore.save(samples: recorded, sampleRate: Self.sampleRate, text: text, language: self.qLanguage)
+                }
+            }
             DispatchQueue.main.async {
                 if let self, id == self.sessionID { deliver?(text, true) }
                 onSettled?()
