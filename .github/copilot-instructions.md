@@ -21,10 +21,11 @@ make run
 - `HotkeyManager.swift` — Quartz Event Tap: hold to talk, double-tap hands-free, chord detection.
 - `AudioRecorder.swift` — AVAudioEngine capture from the chosen device + RMS power metering.
 - `AudioDevices.swift` — CoreAudio input list, device select, `MicTester`.
-- `SpeechRecognizer.swift` — whisper.cpp (XCFramework binary target), English / Hinglish / Hindi, live re-decode, VAD, prompt hints.
+- `SpeechRecognizer.swift` — whisper.cpp (XCFramework binary target), English / Hinglish / Hindi, live re-decode, VAD, prompt hints. Mastering-quality resampler with mono downmix. After a 20 s trim, the earlier text goes into the prompt (English). Live typing uses LocalAgreement-2. Without live typing, the final pass decodes the whole session (60 s or less) again.
+- `TranscriptRepair.swift` — Removes Whisper repeat loops, LocalAgreement prefix, custom-vocabulary spelling (exact, split words, fuzzy for English).
 - `WhisperModelStore.swift` — One ggml file in Application Support: download, SHA-256, delete.
 - `ModelCenter.swift` — Keeps the chosen model loaded and the VAD file present.
-- `TextPostProcessor.swift` — Voice commands, “delete that” / “undo”, snippets.
+- `TextPostProcessor.swift` — Vocabulary spelling, voice commands, “delete that” / “undo”, snippets.
 - `TranscriptFormatter.swift` — Fillers, casing, per-app style.
 - `HistoryStore.swift` — History + stats JSON.
 - `RecordingStore.swift` — Opt-in test recordings (WAV + Whisper text, last 30) for comparing changes.

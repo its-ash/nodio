@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Turns a final raw transcript into the text to insert, or into an editing action.
 enum TextPostProcessor {
@@ -42,11 +42,19 @@ enum TextPostProcessor {
             if undoCommands.contains(key) { return .undo }
         }
 
-        var text = trimmed
+        var text = TranscriptRepair.applyVocabulary(
+            trimmed, terms: settings.vocabularyTerms, fuzzy: settings.language == .english, isWord: isDictionaryWord
+        )
         if settings.voiceCommands { text = applySpokenPunctuation(text) }
         text = expandSnippets(text, settings.snippets)
         if settings.autoFormat { text = TranscriptFormatter.format(text, style: style) }
         return text.isEmpty ? .none : .insert(text)
+    }
+
+    private static func isDictionaryWord(_ w: String) -> Bool {
+        NSSpellChecker.shared.checkSpelling(
+            of: w, startingAt: 0, language: "en", wrap: false, inSpellDocumentWithTag: 0, wordCount: nil
+        ).location == NSNotFound
     }
 
     static func applySpokenPunctuation(_ text: String) -> String {

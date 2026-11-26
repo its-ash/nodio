@@ -27,6 +27,8 @@ final class SpeechRecognizer {
     private static let targetRMS: Float = 0.05
     private static let maxGain: Float = 10
     private static let peakLimit: Float = 0.9
+    private static let maxWholeSamples = Int(sampleRate * 60)
+    private static let contextWords = 32
     // Devanagari prompt: a Latin prompt makes Whisper answer in English. `Hinglish.romanize` turns the output into Latin letters.
     private static let hinglishPrompt = "हाँ, मैं कल ऑफिस आऊँगा। ठीक है, मीटिंग पाँच बजे रखते हैं। तुम क्या कर रहे हो? बहुत धन्यवाद, भाई!"
 
@@ -37,6 +39,7 @@ final class SpeechRecognizer {
         var vadModelPath: String?
         /// Keep the session's audio for `RecordingStore`.
         var saveRecording = false
+        var stablePartials = false
 
         var prompt: String {
             let head = switch language {
@@ -58,17 +61,20 @@ final class SpeechRecognizer {
     // Whisper queue only.
     private let queue = DispatchQueue(label: "com.nodio.whisper", qos: .userInitiated)
     private var ctx: OpaquePointer?
-    private var committed = ""
+    private var committed: [String] = []
+    private var prevHyp: [String] = []
     private var qSession = 0
-    private var qPrompt: UnsafeMutablePointer<CChar>?
+    private var qPrompt = ""
     private var qVADPath: UnsafeMutablePointer<CChar>?
     private var qLanguage: DictationLanguage = .english
+    private var qStable = false
 
     // Guarded by `lock` (audio thread + whisper queue + main).
     private let lock = NSLock()
     private var samples: [Float] = []
-    /// The whole session, untrimmed; nil unless the session saves its recording.
-    private var recording: [Float]?
+    private var whole: [Float] = []
+    private var wholeLimit = 0
+    private var keepRecording = false
     private var accepting = false
     private var converter: AVAudioConverter?
 
@@ -85,7 +91,6 @@ final class SpeechRecognizer {
 
     deinit {
         if let ctx { whisper_free(ctx) }
-        free(qPrompt)
         free(qVADPath)
     }
 
@@ -122,20 +127,23 @@ final class SpeechRecognizer {
 
         lock.lock()
         samples.removeAll(keepingCapacity: true)
-        recording = config.saveRecording ? [] : nil
+        whole.removeAll(keepingCapacity: true)
+        keepRecording = config.saveRecording
+        wholeLimit = config.saveRecording ? .max : Self.maxWholeSamples + 1
         converter = nil
         accepting = true
         lock.unlock()
 
         queue.async { [weak self] in
             guard let self else { return }
-            self.committed = ""
+            self.committed = []
+            self.prevHyp = []
             self.qSession = id
-            free(self.qPrompt)
             free(self.qVADPath)
-            self.qPrompt = strdup(config.prompt)
+            self.qPrompt = config.prompt
             self.qVADPath = config.vadModelPath.flatMap { strdup($0) }
             self.qLanguage = config.language
+            self.qStable = config.stablePartials
         }
         timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
             self?.tick(id)
@@ -151,6 +159,9 @@ final class SpeechRecognizer {
         let fmt = buffer.format
         if converter?.inputFormat != fmt {
             converter = AVAudioConverter(from: fmt, to: Self.targetFormat)
+            converter?.sampleRateConverterQuality = AVAudioQuality.max.rawValue
+            converter?.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
+            converter?.downmix = true
         }
         guard let converter else { return }
 
@@ -171,7 +182,8 @@ final class SpeechRecognizer {
         }
         let converted = UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength))
         samples.append(contentsOf: converted)
-        recording?.append(contentsOf: converted)
+        let room = wholeLimit - whole.count
+        if room > 0 { whole.append(contentsOf: converted.prefix(room)) }
     }
 
     /// Runs one last full decode, delivers it through the session's
@@ -184,8 +196,9 @@ final class SpeechRecognizer {
         lock.lock()
         let wasAccepting = accepting
         accepting = false
-        let recorded = recording
-        recording = nil
+        let audio = whole
+        let save = keepRecording
+        whole = []
         lock.unlock()
 
         let id = sessionID
@@ -196,9 +209,9 @@ final class SpeechRecognizer {
         queue.async { [weak self] in
             var text = ""
             if let self, self.qSession == id {
-                text = self.transcribe(final: true)
-                if let recorded {
-                    RecordingStore.save(samples: recorded, sampleRate: Self.sampleRate, text: text, language: self.qLanguage)
+                text = self.transcribe(final: true, whole: audio)
+                if save {
+                    RecordingStore.save(samples: audio, sampleRate: Self.sampleRate, text: text, language: self.qLanguage)
                 }
             }
             DispatchQueue.main.async {
@@ -225,33 +238,46 @@ final class SpeechRecognizer {
     }
 
     /// Whisper queue only.
-    private func transcribe(final: Bool) -> String {
+    private func transcribe(final: Bool, whole: [Float] = []) -> String {
+        if final, !qStable, !committed.isEmpty, whole.count <= Self.maxWholeSamples, Self.hasSpeech(whole) {
+            let all = Self.words(decode(whole, final: true, context: []))
+            if !all.isEmpty { return all.joined(separator: " ") }
+        }
+
         lock.lock()
         let window = samples
         lock.unlock()
 
-        let secs = Double(window.count) / Self.sampleRate
-        var words: [String] = []
-        if secs >= Self.minSpeechSeconds, vDSP.rootMeanSquare(window) >= Self.silenceRMS {
-            let segs = decode(window, final: final)
-            if !final, secs > Self.maxWindowSeconds, segs.count > 1, let last = segs.last, last.t0 > 0 {
-                committed = Self.join(committed, segs.dropLast().map(\.text).joined(separator: " "))
+        var hyp: [String] = []
+        if Self.hasSpeech(window) {
+            let segs = decode(window, final: final, context: committed)
+            if !final, Double(window.count) / Self.sampleRate > Self.maxWindowSeconds,
+               segs.count > 1, let last = segs.last, last.t0 > 0 {
+                let head = Self.words(segs.dropLast())
+                committed += head
                 let cut = min(window.count, Int(Double(last.t0) / 100 * Self.sampleRate))
                 lock.lock()
                 samples.removeFirst(min(cut, samples.count))
                 lock.unlock()
-                words = Self.words(last.text)
+                hyp = Self.words([last])
+                prevHyp = Array(prevHyp.dropFirst(head.count))
             } else {
-                words = Self.words(segs.map(\.text).joined(separator: " "))
+                hyp = Self.words(segs)
             }
         }
-        // The trailing word of a partial is often cut mid-utterance; hold it
-        // back so the count-based injector never commits a half word.
-        if !final { words = Array(words.dropLast()) }
-        return Self.join(committed, words.joined(separator: " "))
+
+        var shown = hyp
+        if !final, qStable {
+            shown = Array(hyp.prefix(TranscriptRepair.agreedPrefix(prevHyp, hyp)))
+            if !hyp.isEmpty { prevHyp = hyp }
+        } else if !final {
+            // The trailing word of a partial is often cut mid-utterance; hold it back.
+            shown = Array(hyp.dropLast())
+        }
+        return (committed + shown).joined(separator: " ")
     }
 
-    private func decode(_ window: [Float], final: Bool) -> [Segment] {
+    private func decode(_ window: [Float], final: Bool, context: [String]) -> [Segment] {
         guard let ctx else { return [] }
         var pcm = Self.condition(window)
         if pcm.count < Self.minDecodeSamples {
@@ -265,7 +291,8 @@ final class SpeechRecognizer {
         p.n_threads = Self.threads
         // "en" makes Whisper translate Hindi speech; "hi" keeps the words as spoken.
         p.language = UnsafePointer(qLanguage == .english ? Self.language : Self.hindi)
-        p.initial_prompt = qPrompt.map { UnsafePointer($0) }
+        let tail = qLanguage == .english ? context.suffix(Self.contextWords).joined(separator: " ") : ""
+        let prompt = tail.isEmpty ? qPrompt : "\(qPrompt) \(tail)"
         if let qVADPath {
             p.vad = true
             p.vad_model_path = UnsafePointer(qVADPath)
@@ -282,7 +309,10 @@ final class SpeechRecognizer {
         p.no_speech_thold = Self.noSpeechProb
         if !final { p.temperature_inc = 0 }
 
-        let rc = pcm.withUnsafeBufferPointer { whisper_full(ctx, p, $0.baseAddress, Int32($0.count)) }
+        let rc = prompt.withCString { cp in
+            p.initial_prompt = cp
+            return pcm.withUnsafeBufferPointer { whisper_full(ctx, p, $0.baseAddress, Int32($0.count)) }
+        }
         guard rc == 0 else {
             Self.debugLog("whisper_full failed rc=\(rc)")
             return []
@@ -332,12 +362,12 @@ final class SpeechRecognizer {
         return ("[(*".contains(f) && "])*".contains(l)) || s.allSatisfy { $0.isPunctuation || $0.isWhitespace }
     }
 
-    private static func words(_ s: String) -> [String] {
-        s.split(whereSeparator: \.isWhitespace).map(String.init)
+    private static func words(_ segs: some Sequence<Segment>) -> [String] {
+        TranscriptRepair.collapseRepeats(segs.flatMap { $0.text.split(whereSeparator: \.isWhitespace).map(String.init) })
     }
 
-    private static func join(_ a: String, _ b: String) -> String {
-        a.isEmpty ? b : b.isEmpty ? a : "\(a) \(b)"
+    private static func hasSpeech(_ x: [Float]) -> Bool {
+        Double(x.count) / sampleRate >= minSpeechSeconds && vDSP.rootMeanSquare(x) >= silenceRMS
     }
 
     static func debugLog(_ message: String) {

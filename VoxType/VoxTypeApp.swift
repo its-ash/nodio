@@ -382,7 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 language: self.settings.language,
                 vocabulary: self.settings.vocabularyTerms,
                 vadModelPath: self.models.vadPath,
-                saveRecording: self.settings.saveRecordings
+                saveRecording: self.settings.saveRecordings,
+                stablePartials: s.live
             )
             self.speechRecognizer.startLiveSession(config: config) { [weak self] text, isFinal in
                 self?.handleTranscript(text, isFinal: isFinal, session: s)

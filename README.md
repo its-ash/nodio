@@ -13,7 +13,8 @@ Built with **Swift, SwiftUI, AVFoundation, [whisper.cpp](https://github.com/ggml
 - **On-device Whisper** — whisper.cpp with Metal. Pick Small, Medium, or Large v3 Turbo. Audio never leaves the Mac.
 - **Language** — pick one: English (India) or Hinglish (Hindi in Latin letters).
 - **Voice activity detection** — Silero VAD (built into whisper.cpp) skips silence, so fewer wrong words.
-- **Custom vocabulary** — your names, places, and tech words go to Whisper as hints.
+- **Custom vocabulary** — your names, places, and tech words go to Whisper as hints. After the decode, Nodio corrects near misses to your spelling (“type script” → “TypeScript”, “Kubernetis” → “Kubernetes”).
+- **Accurate decoding** — high-quality resampling, stable live words (LocalAgreement-2), removal of repeat loops, and a full pass over long dictations.
 - **Voice commands** — “new line”, “new paragraph”, “full stop”, “comma”, “question mark”. Say only “delete that” or “undo” to edit.
 - **Snippets** — say “my email” and Nodio types your saved text.
 - **Per-app styles** — casual in chat apps, formal in mail, code-safe in IDEs and terminals. You can override per app.
@@ -75,7 +76,8 @@ Nodio/
     ├── SpeechRecognizer.swift # whisper.cpp live decoding (Indian English)
     ├── WhisperModelStore.swift # One model file: download, SHA-256, delete
     ├── ModelCenter.swift   # Active model + VAD lifecycle
-    ├── TextPostProcessor.swift # Voice commands + snippets
+    ├── TextPostProcessor.swift # Vocabulary, voice commands, snippets
+    ├── TranscriptRepair.swift  # Repeat loops, stable live words, vocabulary match
     ├── TranscriptFormatter.swift # Fillers, casing, per-app style
     ├── HistoryStore.swift  # History + stats (JSON)
     ├── AudioDevices.swift  # Input devices + mic test
@@ -96,10 +98,11 @@ Nodio/
 | `VoxTypeApp.swift` | App entry point, menu bar accessory, session orchestration, transcription store |
 | `HotkeyManager.swift` | Quartz Event Tap: hold, double-tap toggle, chord detection |
 | `AudioRecorder.swift` | `AVAudioEngine` capture from the chosen device + RMS power metering |
-| `SpeechRecognizer.swift` | whisper.cpp (Metal): 16 kHz resample, decode every 1.2 s, window trim at 20 s, VAD, prompt hints |
+| `SpeechRecognizer.swift` | whisper.cpp (Metal): mastering-quality 16 kHz resample, decode every 1.2 s, window trim at 20 s with text context, VAD, prompt hints, full final pass |
+| `TranscriptRepair.swift` | Repeat-loop removal, LocalAgreement-2 for live typing, vocabulary spelling |
 | `WhisperModelStore.swift` | One ggml file: download, SHA-256 check, delete |
 | `ModelCenter.swift` | Keeps the chosen model loaded and the VAD file present |
-| `TextPostProcessor.swift` | Spoken punctuation, “delete that” / “undo”, snippets |
+| `TextPostProcessor.swift` | Vocabulary spelling, spoken punctuation, “delete that” / “undo”, snippets |
 | `HistoryStore.swift` | History (last 1000) and stats in Application Support |
 | `SettingsView.swift` | General, Models, Dictionary, App Styles, History, Stats tabs |
 | `HUDWindowController.swift` | Borderless, non-activating, always-on-top `NSPanel` |
